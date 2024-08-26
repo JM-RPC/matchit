@@ -314,7 +314,7 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
                     #print(stringout)
                 else:
                     #print("Stable*...we hava winner!")
-                    newstring = newstring + "Stable* !!!!!!!!!!!!!!!!!!!! "
+                    newstring = newstring + "Stable* !!!!!!!!!!!!!!!!!!!! \n"
                     stringout = stringout + newstring
             else:
                 stringout = stringout + newstring
