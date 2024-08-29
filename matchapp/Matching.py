@@ -48,10 +48,12 @@ def checkTU(mat,Verbose = False, Tol = 1e-10):
         print("### Checking TU #####")
         print("#####################")
     (nrow,ncol) = mat.shape
-    cursize = min(nrow,ncol)
+    maxsize = min(nrow,ncol)
+    cursize = 2
     count = 0
+    outstring = ''
     ISTU = True
-    while cursize >2 :
+    while cursize <= maxsize :
         #choose all cursize x cursize sub-matrices 
         rowsets = list(itertools.combinations(set(np.arange(0,nrow)),cursize))
         colsets = list(itertools.combinations(set(np.arange(0,ncol)),cursize))
@@ -60,21 +62,21 @@ def checkTU(mat,Verbose = False, Tol = 1e-10):
                 a = mat[ix,:]
                 b = a[:,jx]
                 d = np.linalg.det(b)
+                print("\nTesting")
+                print(np.array_str(b))
+                print(f"Determinant: {d}")
                 count = count +1
                 if (np.abs(d)>Tol) & (np.abs(d-1)>Tol) & (np.abs(d+1)>Tol): 
-                    if Verbose:
-                        print(" ....NOT TU!!!")
-                        print(b)
-                        print(f"Determinant: {d} iteration: {count}, Submatrix size:  {cursize}")
                     ISTU = False
-                    return ISTU
-
-        cursize = cursize - 1 
+                    if Verbose:
+                        return ISTU, f">>Is NOT TU<< \n Determinant: {d} \n iteration: {count}, \n Submatrix: \n {np.array_str(b)}"
+                    else: 
+                        return ISTU
+        cursize += 1 
     if Verbose:
-        print(f"Number of its: {count}")
-        print(f"Number of enumerations: {count}")   
-        print("====IS TU!!!")
-    return ISTU
+        return ISTU, f">>IS TU<< Number of determinants tested: {count}"
+    else:
+        return ISTU
 
 
 def firmPref(ifirm, preflist, set1, set2):
@@ -100,7 +102,6 @@ def workerPref(iworker, preflist, firm1, firm2):
                 prefers = False
         else:
             prefers = False
-    #print(f"Testing: worker: {iworker} firm1={firm1} firm2={firm2} Prefers? {prefers}")
     return(prefers)    
     
     
@@ -113,8 +114,8 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
     if len(p) == 0:
         print("No firm preferences specified, quitting.")
         return([],[],[],[])
-    firm_no = list()
-    set_assgn = list()
+    firm_no = list() #firm for each column
+    set_assgn = list() #set for each column
     set_ind = np.zeros((nw+1,1))
     #*******************************************
     #construct the incidence matrix column-wise
@@ -230,21 +231,21 @@ def displayLP(constraints = [], rhs = [], obj = [], teams = [], firms = [],rowla
     constraints['RHS'] = rhs
     constraints['RowLabels'] = rowlabels
     constraints.index = [item+1 for item in constraints.index]
-    constraints.loc[constraints.index.max() + 1] = list(obj) + ['OBJ',' ']
+    constraints.loc[constraints.index.max() + 1] = list(obj) + [' ','OBJ']
     constraints.to_csv("LPmodel_2.csv")
     return(constraints)
 
 def decodeSolution(firms = [], teams = [],  solution = []):
     if (len(firms)== 0): 
             msgtxt = " Input: three vectors of length equal to number of columns in LP.\n"
-            + " firms= firm for each column, teams = set for each column, \n"
+            + " firms= afirm for each column, teams = a set of workers for each column, \n"
             +   " solution = solution vector of length = # columns"
             print (msgtxt)
+    outstring = ''
     for zx in range(0,len(solution)):
         if solution[zx] > 0.0:
-            print(f"Firm: {firms[zx]}, Assigned Set: {teams[zx]} weight:{solution[zx]}")
-
-    return
+            outstring = outstring + f"Firm: {firms[zx]}, Assigned Set: {teams[zx]} weight:{solution[zx]} \n"
+    return(outstring)
 
 def doIntersectionGraph(constraint_mat):
     #mat is a binary array
@@ -261,9 +262,9 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
     #very inefficient brute force enumeration
     #enumerate all of subsets of columns
     #inmat is the incidence matrix for the intersection graph of the constraint matrix
-    #it is nxn with n= number of columns (and in the same order) as the constraint matrix
+    #it is n by n with n= number of columns (and in the same order) as the constraint matrix
     nr,nc = inmat.shape
-    #print(f"doIndependentSets: rows: {nr}, columns {nc}")
+
     # first create a list that contains the power set of the set of columns (this is the brute force part)
     colset = list(range(nc))
     colsubsets = [[]]
@@ -271,20 +272,19 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
         colsubsets += [item + [colitem] for item in colsubsets]
 
     #print(f" Cardinality of power set: {len(colsubsets)}")  #just checking
-    #now and indicator for whether or not the given subset is and independent set
+
+    #now test every subset is_inedependent 
+    #is an indicator for whether or not the given subset is an independent set
     
     is_independent = np.ones((1,len(colsubsets))) #assume a subset of columns is independent until proven dependent
     for indx, item in enumerate(colsubsets): #for each subset of columns
         #item is the current subset of columns we are working on
         #indx is the position in colsubsets where that item resides
-        #print(f" index: {indx}, item : {item}")
         if len(item) == 0: is_independent[0,indx] = 0
         if len(item) == 1: continue
         test_list = list(itertools.combinations(tuple(item),2)) #all sets of size 2 from the set of columns given by item
-        #print("Test List")
-        #print(test_list)
         for xtpl in test_list:
-            if inmat[xtpl[1],xtpl[0]] == 1: #xptl[1] and xptl[2] ahave ana arc between them (inmat is symmetric as arcs are undirected)
+            if inmat[xtpl[1],xtpl[0]] == 1: #xptl[1] and xptl[2] have an arc between them (inmat is symmetric as arcs are undirected only need to check one of (i,j) and (j,i))
                 is_independent[0,indx] = 0
                 break;
     # the list of independent sets is complete. Now reconstruct the worker subsets and firms that go with them
@@ -295,26 +295,23 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
         if (item == 1): #this entry corresponds to an independent set
             solution_count += 1
             newstring = ''
-            #print(f"\n #{solution_count}  Independent set of columns: {colsubsets[indx]}")
             newstring = newstring + f"\n #{solution_count}  Independent set of columns: {colsubsets[indx]}" + "\n"
             cols = colsubsets[indx] #find the correspoinding set of workers
             newindcol = np.zeros((nc,1)) #create a column length vector to record which contraint columns are active.
             for item in cols:
-                #print(f"Firm: {firms[item]} Subset: {teams[item]}")
                 newstring = newstring + f"Firm: {firms[item]} Subset: {teams[item]}" + "\n"
                 newindcol[item,0] = 1
             indcol = np.column_stack((indcol,newindcol))    
             if (len(StabConst) != 0 ):
                 stabtest = np.matmul(StabConst,newindcol)
-                #print(stabtest)
-                if max(stabtest[:,0]) > -1 :
-                    #print("NOT Stable*")
-                    newstring = newstring + "Not Stable* \n"
-                    if (Verbose): stringout = stringout + newstring
-                    #print(stringout)
+                #newstring += f" stability calculation :{np.array_str(stabtest[:,0])} \n"
+                if max(stabtest[:,0]) > -1.0 :
+                    newstring += "----------------- Not Stable*  ---------------\n"
+                    if (Verbose): 
+                        stringout += newstring #verbose mode:  report all matchings
+                        #stringout += f"{np.array_str(stabtest)}"
                 else:
-                    #print("Stable*...we hava winner!")
-                    newstring = newstring + "Stable* !!!!!!!!!!!!!!!!!!!! \n"
+                    newstring += "+++++++++++++++++  Stable*    ++++++++++++++++\n "
                     stringout = stringout + newstring
             else:
                 stringout = stringout + newstring

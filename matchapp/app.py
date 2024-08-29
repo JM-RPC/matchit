@@ -27,32 +27,74 @@ from datetime import datetime
 
 
 app_ui = ui.page_navbar( 
-    ui.nav_panel("Plotting",
-                ui.row(
-                     ui.column(4,offset = 0,*[ui.input_file("file1", "Choose .txt File", accept=[".csv", ".CSV", ".dta", ".DTA"," .txt", ".TXT"], multiple=False, placeholder = '', width = "600px")]),
-                     ),
-                ui.row(
-                     ui.input_action_button("datalogGo","Show Data",width = '300px'),
-                     ui.output_text_verbatim("datalog"),
-                     ),
-                ui.row(
-                     ui.input_action_button("goextreme","Enumerate Extreme Points",width = '300px'),
-                     ui.column(6,offset=0,*[ui.input_radio_buttons("stype","Show: ",choices = ['All Extreme Points','Stable Extreme Points Only'],inline = True)]),
-                     ui.output_text_verbatim("extremelog"),
-                     ),
-                ),
-    ui.nav_panel("Matching",
-                 ),
-    ui.nav_panel("Optimization",
-                 ),
-underline = True, title = "Stable Matcher 1.0 ")
+    ui.nav_panel("Input",
+        ui.row(
+                ui.column(4,offset = 0,*[ui.input_file("file1", "Choose .txt File", accept=[".csv", ".CSV", ".dta", ".DTA"," .txt", ".TXT"], multiple=False, placeholder = '', width = "600px")]),
+            ),
+
+    ),
+    ui.nav_panel("Linear Program",
+        ui.row(
+                ui.column(3, offset = 0,*[ui.input_action_button('generateLP',"Generate LP")]),
+                ui.column(3, offset = 0,*[ui.input_action_button('solveLP',"Solve LP")]),
+                ui.column(6, offset = 0,*[ui.input_checkbox_group("genoptions","Options: ",choices = ["add 1 set per firm","add stability const.","dualize stab. constr."],
+                          width = "500px",inline = True)]),
+            ),
+        ui.row(
+                #ui.output_data_frame("LPOut"),
+                ui.output_text_verbatim("LPOut"),
+                ui.output_text_verbatim("LPSolvedOut"),
+            ),
+        ui.row(
+             ui.column(3, offset = 0,*[ui.input_action_button('testTU',"Test TU: (this can take time)")])
+            ),
+        ui.row(
+             ui.output_text_verbatim("TUreport")
+            ),
+        ui.row(
+             #ui.column(3, offset = 0,*[ui.input_action_button("solveIt","Solve LP")])
+            ),
+        ),
+    ui.nav_panel("Enumeration",
+        ui.row(
+                ui.column(3,offset=0,*[ui.input_action_button("datalogGo","Show Data",width = '300px')]),
+            ),
+        ui.row(
+                ui.output_text_verbatim("datalog"),
+            ),
+        ui.row(
+                ui.column(3,offset=0,*[ui.input_action_button("goextreme","Enumerate Extreme Points",width = '300px')]),
+                ui.column(6,offset=0,*[ui.input_radio_buttons("stype","Show: ",choices = ['All Extreme Points','Stable Extreme Points Only'],inline = True)]),
+            ),
+        ui.row(
+                ui.output_text_verbatim("extremelog"),
+            ),
+        ui.row(
+                ui.column(3,offset=0,*[ui.input_action_button("gointersection","Show Intersection Graph",width = '300px')]),
+            ),
+        ui.row(
+                ui.output_text_verbatim("intgraph"),
+            ),
+        ),
+#     ui.nav_panel("Optimization",
+#                  ),
+underline = True, title = "Stable Matcher 2.0 ")
                  
 def server(input: Inputs, output: Outputs, session: Session):
     
-    nw = reactive.value(0)
-    nf = reactive.value(0)
-    pw = reactive.value([])
-    pf = reactive.value([])
+    nw = reactive.value(0) # number of workers 1,..,nw
+    nf = reactive.value(0) # number of firms 1,...,fn
+    pw = reactive.value([]) #worker preferences 
+    pf = reactive.value([]) # firm preferences
+    cmat = reactive.value([]) #constraint matrix (for TU checking)
+    crhs = reactive.value([]) #righthand sides
+    cobj = reactive.value({}) #objective function
+    df_LP = reactive.value(pd.DataFrame()) # Full generated LP with row and column labels for display mostly
+    solution_LP = reactive.value('') #solution to the LP as a string
+    imat_G = reactive.value([]) #incidence matrix of the intersection graph
+    teams_LP = reactive.value([]) #the team that goes with each column of cmat or df_LP
+    firms_LP = reactive.value([]) #the worker that goes with each column of cmat or df_LP
+    stab_constr_LP = reactive.value([]) # just the stability constraint coefficients
     
     @reactive.calc
     def parsed_file():
@@ -64,24 +106,20 @@ def server(input: Inputs, output: Outputs, session: Session):
             print(f"$$$$$$$$$$$$$$$$$$Path: {fpath}")
             if (fpath[-4:] == '.txt') or (fpath[-4:] == '.TXT'):
                 nwt,nft,pwt,pft = ReadMatchData.readData(fpath)
-            print(f'@@@@@@@@@@@@@@@@nw = {nwt}')
+            #print(f'@@@@@@@@@@@@@@@@nw = {nwt}')
             nw.set(nwt)
             nf.set(nft)
             pw.set(pwt)
             pf.set(pft)
             outstr = ''
-            print(f"***************pwt[1] = {pwt[1]}")
+            #print(f"***************pwt[1] = {pwt[1]}")
             for ix in range(1,nf()+1):
                 outstr = outstr + f"pf[{ix}] = {pf()[ix]} \n"
             for ix in range(1,nw()+1):
                 outstr = outstr + f"pw[{ix}] = {pw()[ix]}\n"
-            print(outstr)
+            #print(outstr)
             return( nft)
 
-            # pushlog("************************************************")
-            # pushlog("File read: "  + input.file1()[0]['name'])
-            # pushlog(f"....Number of rows: {len(df)}")
-            # pushlog("************************************************")
 
     @render.text
     @reactive.event(input.datalogGo)
@@ -91,6 +129,7 @@ def server(input: Inputs, output: Outputs, session: Session):
         nft = nf()
         pft =  pf()
         pwt = pw()
+
         if (nwt == 0): 
             print("**********quitting no data*************")
             return
@@ -105,21 +144,93 @@ def server(input: Inputs, output: Outputs, session: Session):
     @render.text
     @reactive.event(input.goextreme)
     def extremelog():
-        print(f'@@@@@@@@@@@@@@@@@@@@@@@@ Starting enumeration goextreme = {input.goextreme()}')
         nft = nf()
         nwt = nw()
         pft = pf()
         pwt = pw()
-        const_mat,rhs,obj,firms,teams,rowlab,stab_constr = Matching.doLP(nwt, nft, pwt, pft, DoOneSet = True, DoBounds = False, StabilityConstraints = False, Dual = False, Verbose = False)
-        imat = Matching.doIntersectionGraph(const_mat)
+
+        #const_mat,rhs,obj,firms,teams,rowlab,stab_constr = Matching.doLP(nwt, nft, pwt, pft, DoOneSet = oneper, DoBounds = False, StabilityConstraints = dostab, Dual = False, Verbose = False)
+        imat = Matching.doIntersectionGraph(cmat())
+        imat_G.set(imat)
         if (input.stype() == "All Extreme Points"): 
             vbs = True
         else:
             vbs = False
-        independent_columns, outstring = Matching.doIndependentSets(imat, teams, firms, StabConst = stab_constr, Verbose = vbs)
-        #print(outstring)
+        if "add stability const." in input.genoptions():
+            outstring = "The enumeration process for extreme points requires a non-negative binary constraint matrix.\n  Remove the stability constraints and try again!"
+        else:
+            independent_columns, outstring = Matching.doIndependentSets(imat,teams_LP() , firms_LP(), StabConst = stab_constr_LP(), Verbose = vbs)
         return(outstring)
-        
+
+    @reactive.effect
+    @reactive.event(input.generateLP)
+    def formulate_LP():
+        nft = parsed_file()
+        solution_LP.set('')
+        nwt = nw()
+        nft = nf()
+        oneper = False
+        dostab = False
+        print(f"  formulate_LP :: #workers: {nwt}, #firms: {nft}, oneper: {oneper}, dostab: {dostab}")
+        if nw() == 0: 
+            return        
+        oneper = False
+        dostab = False
+        dodual = False
+        if ("add 1 set per firm" in input.genoptions()):
+            oneper = True
+        if ("add stability const." in input.genoptions()):
+            dostab = True
+        if ("dualize stab. constr." in input.genoptions()):
+            dodual = True
+        cols, rhs, obj, firm_no, set_assgn, rowlabels, stab_columns = Matching.doLP(nw(), nf(),pw(),pf(),DoOneSet = oneper, DoBounds = False, StabilityConstraints=dostab, Dual = dodual)
+        dfout = Matching.displayLP(constraints = cols, rhs = rhs, obj = obj, teams = set_assgn, firms = firm_no, rowlabels = rowlabels)
+        df_LP.set(dfout)
+
+        cmat.set(cols)
+        cobj.set(obj)
+        crhs.set(rhs)
+        teams_LP.set(set_assgn)
+        firms_LP.set(firm_no)
+        stab_constr_LP.set(stab_columns)
+
+    #@render.data_frame
+    @render.text
+    @reactive.event(input.generateLP)
+    def LPOut():
+        dflocal = df_LP()
+        if len(dflocal) == 0:
+            return
+        return dflocal.to_string() + '\n' + solution_LP()
+        #return dflocal
+
+    @reactive.effect
+    @reactive.event(input.solveLP)
+    def goSolve():
+        #now solve it
+        results,status = Matching.solveIt(cmat(), crhs(), cobj())
+        outstring = Matching.decodeSolution(firms = firms_LP(), teams = teams_LP(),  solution = results)
+        solution_LP.set(outstring)
+
+
+    #@render.data_frame
+    @render.text
+    def LPSolvedOut():
+        return solution_LP()
+
+
+    @render.text
+    @reactive.event(input.gointersection)    
+    def intgraph():
+        return(np.array_str(imat_G()))
+    
+    @render.text
+    @reactive.event(input.testTU)
+    def TUreport():
+        ISTU, outstring = Matching.checkTU(cmat(),Verbose = True, Tol = 1e-10)
+        return outstring
+
+
 app = App(app_ui, server,debug=True)
 
 

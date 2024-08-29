@@ -24,14 +24,14 @@ def readData(fpath = 'MatchingData.txt'):
         if instring[:5] == 'firms' :
             wftype = 'F'
             nf = int(instring.split('=')[1])
-            print(f"Number of firms = {nf}")
+            #print(f"Number of firms = {nf}")
             pf = list(range(0,nf + 1))
             continue
         elif instring[:7] == 'workers':
             wftype = 'W'
             nw = int(instring.split('=')[1])
             pw = list(range(0,nw + 1))
-            print(f"Number of workers = {nw}")
+            #(f"Number of workers = {nw}")
             continue
         elif instring[:1] == '#':
             continue
@@ -47,15 +47,15 @@ def readData(fpath = 'MatchingData.txt'):
                 itemset = set([int(itx) for itx in itemstring.split(',')])
                 setlist.append(itemset)  
             pf[firmno] = setlist
-            print(f"pf[{firmno}] = {pf[firmno]}")
+            #print(f"pf[{firmno}] = {pf[firmno]}")
         elif (wftype == 'W'):
             temp = instring.split(':')
             workerno = int(temp[0])
             firmlist = [itx.strip() for itx in temp[1].split(',')]
             firmlist = [int(itx) for itx in firmlist]
             pw[workerno] = firmlist
-            print(f"pw[{workerno}] = {firmlist}")
-    print(f"Lines read: {nolines}")    
+            #print(f"pw[{workerno}] = {firmlist}")
+    #print(f"Lines read: {nolines}")    
     return(nw,nf,pw,pf)
         
 if __name__ == "__main__":  
