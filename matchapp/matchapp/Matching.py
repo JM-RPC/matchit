@@ -48,10 +48,12 @@ def checkTU(mat,Verbose = False, Tol = 1e-10):
         print("### Checking TU #####")
         print("#####################")
     (nrow,ncol) = mat.shape
-    cursize = min(nrow,ncol)
+    maxsize = min(nrow,ncol)
+    cursize = 2
     count = 0
+    outstring = ''
     ISTU = True
-    while cursize >2 :
+    while cursize <= maxsize :
         #choose all cursize x cursize sub-matrices 
         rowsets = list(itertools.combinations(set(np.arange(0,nrow)),cursize))
         colsets = list(itertools.combinations(set(np.arange(0,ncol)),cursize))
@@ -60,21 +62,21 @@ def checkTU(mat,Verbose = False, Tol = 1e-10):
                 a = mat[ix,:]
                 b = a[:,jx]
                 d = np.linalg.det(b)
+                print("\nTesting")
+                print(np.array_str(b))
+                print(f"Determinant: {d}")
                 count = count +1
                 if (np.abs(d)>Tol) & (np.abs(d-1)>Tol) & (np.abs(d+1)>Tol): 
-                    if Verbose:
-                        print(" ....NOT TU!!!")
-                        print(b)
-                        print(f"Determinant: {d} iteration: {count}, Submatrix size:  {cursize}")
                     ISTU = False
-                    return ISTU
-
-        cursize = cursize - 1 
+                    if Verbose:
+                        return ISTU, f">>Is NOT TU<< \n Determinant: {d} \n iteration: {count}, \n Submatrix: \n {np.array_str(b)}"
+                    else: 
+                        return ISTU
+        cursize += 1 
     if Verbose:
-        print(f"Number of its: {count}")
-        print(f"Number of enumerations: {count}")   
-        print("====IS TU!!!")
-    return ISTU
+        return ISTU, f">>IS TU<< Number of determinants tested: {count}"
+    else:
+        return ISTU
 
 
 def firmPref(ifirm, preflist, set1, set2):
@@ -112,8 +114,8 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
     if len(p) == 0:
         print("No firm preferences specified, quitting.")
         return([],[],[],[])
-    firm_no = list()
-    set_assgn = list()
+    firm_no = list() #firm for each column
+    set_assgn = list() #set for each column
     set_ind = np.zeros((nw+1,1))
     #*******************************************
     #construct the incidence matrix column-wise
@@ -229,7 +231,7 @@ def displayLP(constraints = [], rhs = [], obj = [], teams = [], firms = [],rowla
     constraints['RHS'] = rhs
     constraints['RowLabels'] = rowlabels
     constraints.index = [item+1 for item in constraints.index]
-    constraints.loc[constraints.index.max() + 1] = list(obj) + ['OBJ',' ']
+    constraints.loc[constraints.index.max() + 1] = list(obj) + [' ','OBJ']
     constraints.to_csv("LPmodel_2.csv")
     return(constraints)
 
@@ -278,11 +280,9 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
     for indx, item in enumerate(colsubsets): #for each subset of columns
         #item is the current subset of columns we are working on
         #indx is the position in colsubsets where that item resides
-
         if len(item) == 0: is_independent[0,indx] = 0
         if len(item) == 1: continue
         test_list = list(itertools.combinations(tuple(item),2)) #all sets of size 2 from the set of columns given by item
-
         for xtpl in test_list:
             if inmat[xtpl[1],xtpl[0]] == 1: #xptl[1] and xptl[2] have an arc between them (inmat is symmetric as arcs are undirected only need to check one of (i,j) and (j,i))
                 is_independent[0,indx] = 0
@@ -304,11 +304,14 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
             indcol = np.column_stack((indcol,newindcol))    
             if (len(StabConst) != 0 ):
                 stabtest = np.matmul(StabConst,newindcol)
-                if max(stabtest[:,0]) > -1 :
-                    newstring = newstring + "%%%%%%%%%%%%%%%%%%  Not Stable* %%%%%%%%%%%%%%\n"
-                    if (Verbose): stringout = stringout + newstring #verbose mode: only reporting stable matchings
+                #newstring += f" stability calculation :{np.array_str(stabtest[:,0])} \n"
+                if max(stabtest[:,0]) > -1.0 :
+                    newstring += "----------------- Not Stable*  ---------------\n"
+                    if (Verbose): 
+                        stringout += newstring #verbose mode:  report all matchings
+                        #stringout += f"{np.array_str(stabtest)}"
                 else:
-                    newstring = newstring + "==================  Stable*     ==============\n "
+                    newstring += "+++++++++++++++++  Stable*    ++++++++++++++++\n "
                     stringout = stringout + newstring
             else:
                 stringout = stringout + newstring
