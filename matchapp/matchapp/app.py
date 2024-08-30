@@ -27,13 +27,16 @@ from datetime import datetime
 
 
 app_ui = ui.page_navbar( 
-    ui.nav_panel("Input",
+    # ui.nav_panel("Input",
+    #     ui.row(
+    #             ui.column(4,offset = 0,*[ui.input_file("file1", "Choose .txt File", accept=[".csv", ".CSV", ".dta", ".DTA"," .txt", ".TXT"], multiple=False, placeholder = '', width = "600px")]),
+    #         ),
+
+    # ),
+    ui.nav_panel("Input/Linear Program",
         ui.row(
                 ui.column(4,offset = 0,*[ui.input_file("file1", "Choose .txt File", accept=[".csv", ".CSV", ".dta", ".DTA"," .txt", ".TXT"], multiple=False, placeholder = '', width = "600px")]),
             ),
-
-    ),
-    ui.nav_panel("Linear Program",
         ui.row(
                 ui.column(3, offset = 0,*[ui.input_action_button('generateLP',"Generate LP")]),
                 ui.column(3, offset = 0,*[ui.input_action_button('solveLP',"Solve LP")]),
