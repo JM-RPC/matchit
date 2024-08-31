@@ -230,7 +230,7 @@ def server(input: Inputs, output: Outputs, session: Session):
     @render.text
     @reactive.event(input.testTU)
     def TUreport():
-        ISTU, outstring = Matching.checkTU(cmat(),Verbose = True, Tol = 1e-10)
+        ISTU, outstring = Matching.checkTU(cmat(), Tol = 1e-10)
         return outstring
 
 
