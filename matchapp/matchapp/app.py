@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+ #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Sun Aug 25 13:33:04 2024
@@ -27,16 +27,38 @@ from datetime import datetime
 
 
 app_ui = ui.page_navbar( 
-    # ui.nav_panel("Input",
-    #     ui.row(
-    #             ui.column(4,offset = 0,*[ui.input_file("file1", "Choose .txt File", accept=[".csv", ".CSV", ".dta", ".DTA"," .txt", ".TXT"], multiple=False, placeholder = '', width = "600px")]),
-    #         ),
-
-    # ),
-    ui.nav_panel("Input/Linear Program",
+    ui.nav_panel("Input",
+        ui.row(
+            ui.HTML("<p>Either choose file or type data in below, then click read data when ready to proceed.</p>"),
+            ),
         ui.row(
                 ui.column(4,offset = 0,*[ui.input_file("file1", "Choose .txt File", accept=[".csv", ".CSV", ".dta", ".DTA"," .txt", ".TXT"], multiple=False, placeholder = '', width = "600px")]),
             ),
+        ui.row(
+                ui.input_text_area("inputdatalog","Input Data (editable):",value = '-', width = "600px", height = "400px")
+            ),        
+        ui.row(
+                #ui.column(3,offset=0,*[ui.input_action_button("datalogGo","Show Data (after reading)",width = '300px')]),
+            ),
+        ui.row(
+                ui.column(3,offset=0,*[ui.input_action_button("doUpdate","Read Input Data",width = '200px')]),
+                ui.column(2,offset =0),
+                ui.column(3,offset = 0,*[ui.download_button("download_data","Save Input Data",width = "200px")]),
+                ui.column(4,offset = 0)
+                #ui.column(3,offset=0,*[ui.input_action_button("datalogGo","Show Data",width = '300px')]),
+                #ui.column(3,offset=0,*[ui.input_action_button("datalogUpdate","Show Data",width = '300px')])
+            ),
+        ui.row(ui.HTML("<p> </p>"),
+            ),
+        ui.row( 
+                ui.HTML("<p>Worker and Firm preferences:</p>"),
+                ui.output_text_verbatim("datalog"),
+            ),        
+        ),
+    ui.nav_panel("Linear/Integer Program",
+        #ui.row(
+                #ui.column(4,offset = 0,*[ui.input_file("file1", "Choose .txt File", accept=[".csv", ".CSV", ".dta", ".DTA"," .txt", ".TXT"], multiple=False, placeholder = '', width = "600px")]),
+            #),
         ui.row(
                 ui.column(3, offset = 0,*[ui.input_action_button('generateLP',"Generate LP")]),
                 ui.column(3, offset = 0,*[ui.input_action_button('solveLP',"Solve LP")]),
@@ -60,12 +82,6 @@ app_ui = ui.page_navbar(
         ),
     ui.nav_panel("Enumeration",
         ui.row(
-                ui.column(3,offset=0,*[ui.input_action_button("datalogGo","Show Data",width = '300px')]),
-            ),
-        ui.row(
-                ui.output_text_verbatim("datalog"),
-            ),
-        ui.row(
                 ui.column(3,offset=0,*[ui.input_action_button("goextreme","Enumerate Extreme Points",width = '300px')]),
                 ui.column(6,offset=0,*[ui.input_radio_buttons("stype","Show: ",choices = ['All Extreme Points','Stable Extreme Points Only'],inline = True)]),
             ),
@@ -81,7 +97,7 @@ app_ui = ui.page_navbar(
         ),
 #     ui.nav_panel("Optimization",
 #                  ),
-underline = True, title = "Stable Matcher 2.0 ")
+underline = True, title = "Stable Matcher 3.0 ")
                  
 def server(input: Inputs, output: Outputs, session: Session):
     
@@ -98,50 +114,100 @@ def server(input: Inputs, output: Outputs, session: Session):
     teams_LP = reactive.value([]) #the team that goes with each column of cmat or df_LP
     firms_LP = reactive.value([]) #the worker that goes with each column of cmat or df_LP
     stab_constr_LP = reactive.value([]) # just the stability constraint coefficients
+    input_data = reactive.value([]) #this is the cleaned up input data: a list of lines, no spaces, no comments
+    output_data = reactive.value([]) # the "compiled" version of the input model for display
     
-    @reactive.calc
-    def parsed_file():
-        print(f"$$$$$$$$$$$$$$$$$$Path: {str(input.file1()[0]['datapath'])}")
+
+    @render.download(filename="MatchData_"+str(datetime.now())+".txt")
+    def download_data():
+        yield input.inputdatalog()
+
+
+
+    #@reactive.calc
+    @reactive.effect
+    def get_file():
+        #print(f"$$$$$$$$$$$$$$$$$$Path: {str(input.file1()[0]['datapath'])}")
         if input.file1() is None:
-            return('')
+            return('-')
         else: #Note the ui passes only paths ending in  .csv, .CSV, .dta, .DTA and .txt
             fpath = str(input.file1()[0]['datapath'])
             print(f"$$$$$$$$$$$$$$$$$$Path: {fpath}")
             if (fpath[-4:] == '.txt') or (fpath[-4:] == '.TXT'):
-                nwt,nft,pwt,pft = ReadMatchData.readData(fpath)
-            #print(f'@@@@@@@@@@@@@@@@nw = {nwt}')
-            nw.set(nwt)
-            nf.set(nft)
-            pw.set(pwt)
-            pf.set(pft)
-            outstr = ''
-            #print(f"***************pwt[1] = {pwt[1]}")
-            for ix in range(1,nf()+1):
-                outstr = outstr + f"pf[{ix}] = {pf()[ix]} \n"
-            for ix in range(1,nw()+1):
-                outstr = outstr + f"pw[{ix}] = {pw()[ix]}\n"
-            #print(outstr)
-            return( nft)
+                data_in = ReadMatchData.readFile(fpath)
+                #temp = "\n".join(data_in)
+                ui.update_text_area("inputdatalog", value = data_in)
+                input_data.set(data_in)
+                return(data_in)
 
-
-    @render.text
-    @reactive.event(input.datalogGo)
-    def datalog(): 
-        nft = parsed_file()
-        nwt = nw()
-        nft = nf()
-        pft =  pf()
-        pwt = pw()
-
-        if (nwt == 0): 
-            print("**********quitting no data*************")
+    @reactive.effect
+    @reactive.event(input.doUpdate)
+    def recompile():
+        print(">>>>>>>>>>>>>>>>>>>>>>>in recompile")
+        datalist = []
+        data = input.inputdatalog()
+        if data == '-':
             return
+            #data = get_file()
+            #if data == '-': return
+        #datalist = input.inputdatalog().split("\n")
+        datalist = data.split("\n")
+        nwt, nft, pwt, pft, dataset = ReadMatchData.readData(datalist)
+        nf.set(nft)
+        nw.set(nwt)
+        pf.set(pft)
+        pw.set(pwt)
+        input_data.set(data)
         outstr = ''
+        outstr = f"Number of workers = {nft}. Number of firms = {nft} \n"
         for ix in range(1,nft+1):
             outstr = outstr + f"pf[{ix}] = {pft[ix]} \n"
         for ix in range(1,nwt+1):
             outstr = outstr + f"pw[{ix}] = {pwt[ix]}\n"
-        return(outstr)
+        output_data.set(outstr)
+        print("leaving recompile")
+        print(outstr)
+        return
+
+
+
+
+
+    # #@reactive.event(input.inputdatalogGo)
+    # def inputdatalog(): 
+    #     nft = parsed_file()
+    #     nwt = nw()
+    #     nft = nf()
+    #     pft =  pf()
+    #     pwt = pw()
+    #     data = input_data()
+
+    #     if (nwt == 0): 
+    #         print("**********quitting no data*************")
+    #         return
+    #     outstr = ''
+    #     for item in data:
+    #         outstr = outstr + item + "\n"
+    #     return(outstr)
+
+    @render.text
+    @reactive.event(input.doUpdate)
+    def datalog(): 
+        data = output_data()
+        if len(data) == 0: 
+            return('Ooops! Maybe forgot to READ the Input Data?')
+        else:
+            return(data)
+
+
+    # @reactive.event(input.updatedata)
+    # def updatedata():
+    #     print("UPdating data>>>>>>>>")
+    #     nwt, nft, pwt, pft, dataset = Matching.readData(input.inputdatalog())
+    #     nw.set(nwt)
+    #     nf.set(nft)
+    #     pw.set(pwt)
+    #     p.set(pft)
   
 
     @render.text
@@ -168,13 +234,13 @@ def server(input: Inputs, output: Outputs, session: Session):
     @reactive.effect
     @reactive.event(input.generateLP)
     def formulate_LP():
-        nft = parsed_file()
+        #nft = parsed_file()
         solution_LP.set('')
         nwt = nw()
         nft = nf()
         oneper = False
         dostab = False
-        print(f"  formulate_LP :: #workers: {nwt}, #firms: {nft}, oneper: {oneper}, dostab: {dostab}")
+        #print(f"  formulate_LP :: #workers: {nwt}, #firms: {nft}, oneper: {oneper}, dostab: {dostab}")
         if nw() == 0: 
             return        
         oneper = False
@@ -203,7 +269,7 @@ def server(input: Inputs, output: Outputs, session: Session):
     def LPOut():
         dflocal = df_LP()
         if len(dflocal) == 0:
-            return
+            return "No Data found.  Maybe forgot to READ the Input Data?"
         return dflocal.to_string() + '\n' + solution_LP()
         #return dflocal
 
@@ -211,6 +277,8 @@ def server(input: Inputs, output: Outputs, session: Session):
     @reactive.event(input.solveLP)
     def goSolve():
         #now solve it
+        if len(df_LP()) == 0:
+            return "Nothing to solve here.  Forgot to GENERATE LP?"
         results,status = Matching.solveIt(cmat(), crhs(), cobj())
         outstring = Matching.decodeSolution(firms = firms_LP(), teams = teams_LP(),  solution = results)
         solution_LP.set(outstring)
