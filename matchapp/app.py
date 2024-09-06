@@ -137,13 +137,13 @@ def server(input: Inputs, output: Outputs, session: Session):
                 data_in = ReadMatchData.readFile(fpath)
                 #temp = "\n".join(data_in)
                 ui.update_text_area("inputdatalog", value = data_in)
+                output_data.set('Click Read Input Data')
                 input_data.set(data_in)
                 return(data_in)
-
+    
     @reactive.effect
     @reactive.event(input.doUpdate)
     def recompile():
-        print(">>>>>>>>>>>>>>>>>>>>>>>in recompile")
         datalist = []
         data = input.inputdatalog()
         if data == '-':
@@ -165,33 +165,12 @@ def server(input: Inputs, output: Outputs, session: Session):
         for ix in range(1,nwt+1):
             outstr = outstr + f"pw[{ix}] = {pwt[ix]}\n"
         output_data.set(outstr)
-        print("leaving recompile")
-        print(outstr)
+        #print("leaving recompile")
+        #print(outstr)
         return
 
-
-
-
-
-    # #@reactive.event(input.inputdatalogGo)
-    # def inputdatalog(): 
-    #     nft = parsed_file()
-    #     nwt = nw()
-    #     nft = nf()
-    #     pft =  pf()
-    #     pwt = pw()
-    #     data = input_data()
-
-    #     if (nwt == 0): 
-    #         print("**********quitting no data*************")
-    #         return
-    #     outstr = ''
-    #     for item in data:
-    #         outstr = outstr + item + "\n"
-    #     return(outstr)
-
     @render.text
-    @reactive.event(input.doUpdate)
+    #@reactive.event(input.doUpdate)
     def datalog(): 
         data = output_data()
         if len(data) == 0: 
@@ -199,16 +178,6 @@ def server(input: Inputs, output: Outputs, session: Session):
         else:
             return(data)
 
-
-    # @reactive.event(input.updatedata)
-    # def updatedata():
-    #     print("UPdating data>>>>>>>>")
-    #     nwt, nft, pwt, pft, dataset = Matching.readData(input.inputdatalog())
-    #     nw.set(nwt)
-    #     nf.set(nft)
-    #     pw.set(pwt)
-    #     p.set(pft)
-  
 
     @render.text
     @reactive.event(input.goextreme)
