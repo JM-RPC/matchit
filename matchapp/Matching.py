@@ -62,21 +62,16 @@ def checkTU(mat,Verbose = False, Tol = 1e-10):
                 a = mat[ix,:]
                 b = a[:,jx]
                 d = np.linalg.det(b)
-                print("\nTesting")
-                print(np.array_str(b))
-                print(f"Determinant: {d}")
+                if Verbose:
+                    print("\nTesting")
+                    print(np.array_str(b))
+                    print(f"Determinant: {d}")
                 count = count +1
                 if (np.abs(d)>Tol) & (np.abs(d-1)>Tol) & (np.abs(d+1)>Tol): 
                     ISTU = False
-                    if Verbose:
-                        return ISTU, f">>Is NOT TU<< \n Determinant: {d} \n iteration: {count}, \n Submatrix: \n {np.array_str(b)}"
-                    else: 
-                        return ISTU
+                    return ISTU, f">>Is NOT TU<< \n Determinant: {d} \n iteration: {count}, \n Submatrix: \n {np.array_str(b)}"
         cursize += 1 
-    if Verbose:
-        return ISTU, f">>IS TU<< Number of determinants tested: {count}"
-    else:
-        return ISTU
+    return ISTU, f">>IS TU<< Number of determinants tested: {count}"
 
 
 def firmPref(ifirm, preflist, set1, set2):
@@ -107,6 +102,16 @@ def workerPref(iworker, preflist, firm1, firm2):
     
     
 def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityConstraints = True, Dual = False, Verbose = False):
+    #Note: workers and firms are indexed 1-offset: workers 1,...,m and firms 1,...,n.  Python arrays/lists are 0-offset, an
+    #array with n components is indexed 0,...,n-1.  Sooo... 
+    #p is a list of lists that holds firm preferences: p[1] is a list of sets of workers (teams) in preference order for firm 1. 
+    #For example: p[1][0] is the favorite team for firm 1, p[1][2] the next most favored team, etc.
+    #the list of teams starts at 0 the list of firm preference lists starts at 1.   
+    #Same deal for worker preferences but pw[i][0] is the firm number that worker i likes best, p[i][1] second best, etc...
+    #Confusing? Yes, I know...
+    #At this point, no preprocessing is done to remove non firm individually rational teams from firm preferences
+    #non worker individually rational team assignments (teams containin a worker who prefers unemployment to the assigned firm)
+    # are screened out below.
     if Verbose:
         print("#############################")
         print("### Generating LP Model #####")
@@ -120,16 +125,27 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
     #*******************************************
     #construct the incidence matrix column-wise
     #*******************************************
-    for ix in range(1,nf+1,1):
-        for jx in range(0,len(p[ix]),1):
-            a = [1 if item in p[ix][jx] else 0 for item in range(1,nw+1,1)]
-            a = [0]+ a
+    for ix in range(1,nf+1,1): #for each firm 1,...,nf
+        for jx in range(0,len(p[ix]),1): #and each set in that firm's preference list
+            #create a characteristic or indicator vector (0 if a worker is not in the set 1 if worker is)
+            #a and b are 0 offset lists, pw and p start at 1 --the 0 entry is empty
+
+            a = [1 if item in p[ix][jx] else 0 for item in range(1,nw+1,1)] #the assigned team's characteristic vector
+            #a[item] = 1 if worker # item = 1 is in the jx-th subset of firm i's preference list
+
+            b = [1 if ((a[itx]==1) & (ix not in pw[itx+1])) else 0 for itx in range(0,nw,1) ] #b[itx]=1 if worker itx+1 will not work for firm ix
+            #check that non- worker individually rational team assignments that have been dropped
+            #for ixq in range(0,len(b),1): if (b[ixq] == 1): print(f"Worker {ixq+1} will not work for firm {ix}") 
+            if (sum(b) > 0): continue #at least one worker in this set will not work for firm ix this team is not individually rational for the workers drop it
+
+            a = [0]+ a  #row entries start at row 1 not row 0
             set_ind = np.column_stack((set_ind,a))
             firm_no.append(ix)
             set_assgn.append(p[ix][jx])
     set_ind = np.delete(set_ind,0,1)
     set_ind = np.delete(set_ind,0,0)
     nr, nc = set_ind.shape
+    #print(f">>>>>>>>  After team incidence matrix rows = {nr} columns = {nc}  <<<<<<")
     rhs = np.ones((nr,1))
     rowlabels = list(range(1,nw+1))
     #columns are now set, construct objective 
@@ -149,7 +165,7 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
 #    rhs[nc:len(rhs),0] = -1
     
     #*******************************************
-    #now add the variable bounds (not needed may tighten LP relaxation)
+    #now add the variable bounds (not needed may tighten LP relaxation??)
     #*******************************************
     if DoBounds ==  True:
         for ix in range(0,nc):
@@ -193,13 +209,12 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
                 if workerPref(iwk,pw,ifirm_w,ifirm):
                     if (iwk in iset_w):
                         newrow[colno_w] = -1
+        #always generate stability constraints, include in LP formulation only if asked(below)
+        stab_columns = np.row_stack((stab_columns,newrow))
+        #rhs_stab = np.append(rhs,-1)
+        rowlabels_stab = rowlabels_stab + ['Stability' ]
         if Dual:
             obj = obj + newrow*(1)
-        else:
-            #set_ind = np.row_stack((set_ind,newrow))
-            stab_columns = np.row_stack((stab_columns,newrow))
-            rhs_stab = np.append(rhs,-1)
-            rowlabels_stab = rowlabels_stab + ['Stability' ]
     stab_columns = stab_columns[1:,:] #adjust out the initial column of all zeros
     if  not Dual:
         obj = obj - 1
@@ -232,7 +247,7 @@ def displayLP(constraints = [], rhs = [], obj = [], teams = [], firms = [],rowla
     constraints['RowLabels'] = rowlabels
     constraints.index = [item+1 for item in constraints.index]
     constraints.loc[constraints.index.max() + 1] = list(obj) + [' ','OBJ']
-    constraints.to_csv("LPmodel_2.csv")
+    #constraints.to_csv("LPmodel_2.csv")
     return(constraints)
 
 def decodeSolution(firms = [], teams = [],  solution = []):
@@ -297,14 +312,14 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
             newstring = ''
             newstring = newstring + f"\n #{solution_count}  Independent set of columns: {colsubsets[indx]}" + "\n"
             cols = colsubsets[indx] #find the correspoinding set of workers
-            newindcol = np.zeros((nc,1)) #create a column length vector to record which contraint columns are active.
+            newindcol = np.zeros((nc,1)) #create a column length vector to record which columns are active.
             for item in cols:
                 newstring = newstring + f"Firm: {firms[item]} Subset: {teams[item]}" + "\n"
                 newindcol[item,0] = 1
             indcol = np.column_stack((indcol,newindcol))    
             if (len(StabConst) != 0 ):
                 stabtest = np.matmul(StabConst,newindcol)
-                #newstring += f" stability calculation :{np.array_str(stabtest[:,0])} \n"
+                newstring += f" stability calculation :{np.array_str(stabtest[:,0])} \n"
                 if max(stabtest[:,0]) > -1.0 :
                     newstring += "----------------- Not Stable*  ---------------\n"
                     if (Verbose): 
