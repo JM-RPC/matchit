@@ -14,6 +14,10 @@ from pandas import option_context
 import Matching
 import ReadMatchData
 import re
+import idGraph
+import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 
 
 from shiny import App, Inputs, Outputs, Session, reactive, render, ui
@@ -91,8 +95,12 @@ app_ui = ui.page_navbar(
         ui.row(
                 ui.column(3,offset=0,*[ui.input_action_button("gointersection","Show Intersection Graph",width = '300px')]),
             ),
-        ui.row(
-                ui.output_text_verbatim("intgraph"),
+        ui.row( 
+                ui.column(6,offset = 0,*[ui.output_text_verbatim("intgraph")]),
+            #),
+        #ui.row(
+                ui.column(6, offset = 0,*[ui.output_plot("intgraphPic",width = "800px",height="800px")]),
+                height = "1200px", 
             ),
         ),
 #     ui.nav_panel("Optimization",
@@ -272,6 +280,40 @@ def server(input: Inputs, output: Outputs, session: Session):
     def TUreport():
         ISTU, outstring = Matching.checkTU(cmat(), Tol = 1e-10)
         return outstring
+
+    @render.plot
+    @reactive.event(input.gointersection)
+    def intgraphPic():
+        imat = np.array(imat_G())
+        if imat == []: 
+            print("No incidence matrix, generate extreme points first.")
+            return
+        nr,nc = imat.shape
+        node = idGraph.nodeCoordinates(nr)
+        dotx = [item[0] for item in node]
+        doty = [item[1] for item in node]
+        lines = idGraph.makeSegs(imat,node)
+        if lines == []: 
+            print("Problem generating lines, node/column mismatch?")
+            return
+        fig, ax = plt.subplots(figsize =(8,12))
+        #fig = plt.figure(figsize = (12,9), tight_layout = False)
+        ax.set_xlim(-1.5,1.5)
+        ax.set_ylim(-1.5,1.5)
+        lc = LineCollection(lines,linewidths = 1)
+        ax.add_collection(lc)
+        ax.plot(dotx,doty,'bo')
+        for ix in range(0,nr):
+            pfac = 1.10
+            nfac = 1.4
+            vfac = 1.05
+            if (dotx[ix] < 0 ): 
+                fac = nfac
+            else:
+                fac = pfac
+            plt.text(dotx[ix]*fac, doty[ix]*vfac, f"{ix}={firms_LP()[ix]}: {teams_LP()[ix]}", fontsize = 10)
+        plt.title("Intersection Graph")
+        return(plt.draw())
 
 
 app = App(app_ui, server,debug=True)
