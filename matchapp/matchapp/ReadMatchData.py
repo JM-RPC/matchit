@@ -57,11 +57,18 @@ def readData(inlist = []):
         elif instring[:1] == '#': #this should never happen
             print(f'*****>>>>>>>>>{instring}')
             continue
-
+        elif (instring[:1] not in "123456789"):
+            return(0,0,[],[],f"Typo? {instring}")
 
         #it's a data line
         if (wftype == 'F'):
+            #check syntax...sort of
+            if sum([0 if item in "][}{:0123456789," else 1 for item in instring])>0:
+                return(0,0,[],[],f"Typo? {instring}")
+            #now process it
             firmno = int(instring.split(':')[0])
+            if firmno> nf:
+                return(0,0,[],[],f"firm number out of range at: {instring}")
             outiter = re.finditer(r'\{.*?\}',instring.split(':')[1])
             setlist = []
             for item in outiter:
@@ -70,14 +77,20 @@ def readData(inlist = []):
                 setlist.append(itemset)  
             pf[firmno] = setlist
         elif (wftype == 'W'):
+            #check syntax...sort of
+            if sum([0 if item in ":0123456789," else 1 for item in instring])>0:
+                return(0,0,[],[],f"Typo? {instring}")
+            #now process it
             temp = instring.split(':')
             workerno = int(temp[0])
+            if workerno > nw: 
+                return(0,0,[],[],f"worker number out of range at:{instring}")
             firmlist = [itx.strip() for itx in temp[1].split(',')]
             firmlist = [int(itx) for itx in firmlist]
             pw[workerno] = firmlist
     tempstring = '\n'.join(outstringlist)
     #print(f"readData completed data : {tempstring}")
-    return(nw,nf,pw,pf,outstringlist)
+    return(nw,nf,pw,pf,tempstring)
         
 if __name__ == "__main__":  
     nw, nf, pw, pf, dataset= readData(fpath = '/Volumes/Working/Ministore/MiniMini/Rsync/JMBOX/Research/Matching/MatchData.txt')
