@@ -95,11 +95,16 @@ app_ui = ui.page_navbar(
         ui.row(
                 ui.column(3,offset=0,*[ui.input_action_button("gointersection","Show Intersection Graph",width = '300px')]),
             ),
+        ui.row(
+                ui.column(6,offset=0,*[ui.output_text_verbatim("intgraph")]),
+                
+            ),
+        ui.row(
+            ui.column(6,offset=0, *[ui.input_numeric("iset","Show Independent Set",-1,min=-2,max=-1,step=1)]),
+            ),
         ui.row( 
-                ui.column(6,offset = 0,*[ui.output_text_verbatim("intgraph")]),
-            #),
-        #ui.row(
                 ui.column(6, offset = 0,*[ui.output_plot("intgraphPic",width = "800px",height="800px")]),
+                ui.column(6, offset = 0,*[ui.output_plot("subgraphPic",width = "800px",height="800px")]),
                 height = "1200px", 
             ),
         ),
@@ -124,6 +129,7 @@ def server(input: Inputs, output: Outputs, session: Session):
     stab_constr_LP = reactive.value([]) # just the stability constraint coefficients
     input_data = reactive.value([]) #this is the cleaned up input data: a list of lines, no spaces, no comments
     output_data = reactive.value([]) # the "compiled" version of the input model for display
+    indep_cols = reactive.value([]) #the independent set characteristic vectors for the current intersection graph
     
 
     @render.download(filename="MatchData_"+str(datetime.now())+".txt")
@@ -140,7 +146,7 @@ def server(input: Inputs, output: Outputs, session: Session):
             return('-')
         else: #Note the ui passes only paths ending in  .csv, .CSV, .dta, .DTA and .txt
             fpath = str(input.file1()[0]['datapath'])
-            print(f"$$$$$$$$$$$$$$$$$$Path: {fpath}")
+            #print(f"$$$$$$$$$$$$$$$$$$Path: {fpath}")
             if (fpath[-4:] == '.txt') or (fpath[-4:] == '.TXT'):
                 data_in = ReadMatchData.readFile(fpath)
                 #temp = "\n".join(data_in)
@@ -170,7 +176,7 @@ def server(input: Inputs, output: Outputs, session: Session):
             output_data.set(dataset)
             return
         outstr = ''
-        outstr = f"Number of workers = {nft}. Number of firms = {nft} \n"
+        outstr = f"Number of workers = {nwt}. Number of firms = {nft} \n"
         for ix in range(1,nft+1):
             outstr = outstr + f"pf[{ix}] = {pft[ix]} \n"
         for ix in range(1,nwt+1):
@@ -185,7 +191,7 @@ def server(input: Inputs, output: Outputs, session: Session):
     def datalog(): 
         data = output_data()
         if len(data) == 0: 
-            return('Ooops! Maybe forgot to READ the Input Data?')
+            return('Ooops! Maybe forgot to READ the Input Data, or write the data into the box above? \n click Read Data after reading or entering data.')
         else:
             return(data)
 
@@ -208,7 +214,10 @@ def server(input: Inputs, output: Outputs, session: Session):
         if "add stability const." in input.genoptions():
             outstring = "The enumeration process for extreme points requires a non-negative binary constraint matrix.\n  Remove the stability constraints and try again!"
         else:
-            independent_columns, outstring = Matching.doIndependentSets(imat,teams_LP() , firms_LP(), StabConst = stab_constr_LP(), Verbose = vbs)
+            independent_columns, outstring = Matching.doIndependentSets(imat, teams_LP() , firms_LP(), StabConst = stab_constr_LP(), Verbose = vbs)
+            indep_cols.set(independent_columns)
+            nr,nc = independent_columns.shape
+            ui.update_numeric("iset", min=0, max=nc-1)
         return(outstring)
 
     @reactive.effect
@@ -256,11 +265,16 @@ def server(input: Inputs, output: Outputs, session: Session):
     @reactive.effect
     @reactive.event(input.solveLP)
     def goSolve():
+        linprogstat = ["Optimization Nominal", "Iteration Limit Reached", "Infeasible", "Unbounded","Numerical Problems, call a professional."]
+
         #now solve it
         if len(df_LP()) == 0:
             return "Nothing to solve here.  Forgot to GENERATE LP?"
         results,status = Matching.solveIt(cmat(), crhs(), cobj())
-        outstring = Matching.decodeSolution(firms = firms_LP(), teams = teams_LP(),  solution = results)
+        if status == 0:
+            outstring = Matching.decodeSolution(firms = firms_LP(), teams = teams_LP(),  solution = results)
+        else:
+            outstring = f"Status: {status}, {linprogstat[status]}" 
         solution_LP.set(outstring)
 
 
@@ -288,20 +302,18 @@ def server(input: Inputs, output: Outputs, session: Session):
         if imat == []: 
             print("No incidence matrix, generate extreme points first.")
             return
-        nr,nc = imat.shape
+        nr,nc = imat.shape  #should be nxn
         node = idGraph.nodeCoordinates(nr)
         dotx = [item[0] for item in node]
         doty = [item[1] for item in node]
         lines = idGraph.makeSegs(imat,node)
-        if lines == []: 
-            print("Problem generating lines, node/column mismatch?")
-            return
         fig, ax = plt.subplots(figsize =(8,12))
         #fig = plt.figure(figsize = (12,9), tight_layout = False)
         ax.set_xlim(-1.5,1.5)
         ax.set_ylim(-1.5,1.5)
-        lc = LineCollection(lines,linewidths = 1)
-        ax.add_collection(lc)
+        if lines != []:
+            lc = LineCollection(lines,linewidths = 1)
+            ax.add_collection(lc)
         ax.plot(dotx,doty,'bo')
         for ix in range(0,nr):
             pfac = 1.10
@@ -312,8 +324,55 @@ def server(input: Inputs, output: Outputs, session: Session):
             else:
                 fac = pfac
             plt.text(dotx[ix]*fac, doty[ix]*vfac, f"{ix}={firms_LP()[ix]}: {teams_LP()[ix]}", fontsize = 10)
-        plt.title("Intersection Graph")
+        plt.title("Intersection Graph of the Constraint Matrix\n node/column = firm# :  assigned team")
         return(plt.draw())
+
+    @render.plot
+    @reactive.event(input.iset)
+    def subgraphPic():
+        if (input.iset() == -1): return
+        active = indep_cols()[:,input.iset()]
+        print(f">>>>>>>>set:{input.iset()} active: {active}")
+        imat = np.array(imat_G())
+        if imat == []: 
+            print("No incidence matrix, generate extreme points first.")
+            return
+        nr,nc = imat.shape  #should be nxn
+        node = idGraph.nodeCoordinates(nr)
+        dotx = [item[0] for item in node]
+        doty = [item[1] for item in node]
+        #mask out the columns not in the current independent set
+        imatnew = imat
+        for ix in range(0,nr):
+            for jx in range(0,nc):
+                if ((active[ix] == 0) & (active[jx] == 0)):
+                    imatnew[ix,jx] =0              
+        lines = idGraph.makeSegs(imatnew,node)
+        fig, ax = plt.subplots(figsize =(8,12))
+        #fig = plt.figure(figsize = (12,9), tight_layout = False)
+        ax.set_xlim(-1.5,1.5)
+        ax.set_ylim(-1.5,1.5)
+        if lines != []:
+            lc = LineCollection(lines,linewidths = 1)
+            ax.add_collection(lc)
+        for ix in range(0,len(active)):
+            clstr = 'b'
+            if active[ix] == 1 : clstr = 'r'
+            ax.plot(dotx[ix],doty[ix],'o',color = clstr)
+        #ax.plot(dotx,doty,'bo',color = clr2)
+        for ix in range(0,nr):
+            pfac = 1.10
+            nfac = 1.4
+            vfac = 1.05
+            if (dotx[ix] < 0 ): 
+                fac = nfac
+            else:
+                fac = pfac
+            plt.text(dotx[ix]*fac, doty[ix]*vfac, f"{ix}={firms_LP()[ix]}: {teams_LP()[ix]}", fontsize = 10)
+        plt.title(f"Intersection Graph of independent set {input.iset()}\n columns: {active}")
+        return(plt.draw())
+        
+
 
 
 app = App(app_ui, server,debug=True)

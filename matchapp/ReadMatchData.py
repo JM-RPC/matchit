@@ -44,12 +44,12 @@ def readData(inlist = []):
         outstringlist.append(instring)
 
         #decode the type of data line: data, firm indicator, worker indicator or comment
-        if instring[:5] == 'firms' :
+        if instring[0:5] == 'firms' :
             wftype = 'F'
             nf = int(instring.split('=')[1])
             pf = [[] for itx in range(0,nf + 1)]
             continue
-        elif instring[:7] == 'workers':
+        elif instring[0:7] == 'workers':
             wftype = 'W'
             nw = int(instring.split('=')[1])
             pw = [[] for itx in range(0,nw +1)]
@@ -84,10 +84,17 @@ def readData(inlist = []):
             temp = instring.split(':')
             workerno = int(temp[0])
             if workerno > nw: 
-                return(0,0,[],[],f"worker number out of range at:{instring}")
+                return(0,0,[],[],f"worker number {workerno} out of range at:{instring}")
             firmlist = [itx.strip() for itx in temp[1].split(',')]
             firmlist = [int(itx) for itx in firmlist]
             pw[workerno] = firmlist
+    #check numbering consistency
+    for setx in pf[1:]:
+        if (max([max(item) for item in setx]) > nw):
+            return(0,0,[],[],f"worker number out of range in firm prefs: {setx} workers indicated {nw}")
+    for firmx in pw[1:]:
+        if max(firmx) > nf:
+            return(0,0,[],[],f"firm number {max(firmx)} out of range in worker prefs: {firmx} firms indicated = {nf}")
     tempstring = '\n'.join(outstringlist)
     #print(f"readData completed data : {tempstring}")
     return(nw,nf,pw,pf,tempstring)

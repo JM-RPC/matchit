@@ -158,7 +158,7 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
             c = [1 if firm_no[kx] == ix+1 else 0 for kx in range(0,nc)]
             set_ind = np.row_stack((set_ind,c))
             rhs = np.append(rhs,1)
-            rowlabels.append("One set to a firm.")
+            rowlabels.append("One per f.")
     #righthand side up to this point is 1
 #    (nrow,ncol) = set_ind.shape
 #    rhs = np.ones((nrow + nf + len(firm_no),1))
@@ -200,19 +200,19 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
                 continue
             if (firmPref(ifirm,p,set(setitem[1]),set(iset))):
                 newrow[colno] = -1
-        #now the hard part: for every worker in iset scan all firm/set pairs put a 1 in the column if worker j prefers that firm and is in that set.
-        for iwk in iset:
-            for item_w in colname:
+        #now the hard part: for every worker in iset scan all firm/set pairs put a 1 in the column if all workers in iset  prefers that firm ifirm.
+        for iwk in iset: #for each worker in iset
+            for item_w in colname: #look through all columns (possible firm-team matches)
                 colno_w = colname.index(item_w)
                 ifirm_w = item_w[0]
                 iset_w = item_w[1]
-                if workerPref(iwk,pw,ifirm_w,ifirm):
-                    if (iwk in iset_w):
-                        newrow[colno_w] = -1
+                if (iwk in iset_w):  #if our worker iwk is in the set iset_w
+                    for iwk_z in iset_w: #unless one or more workers in the set iset_w prefer ifirm to the firm attached to that column ifirm_w
+                        if (workerPref(iwk_z,pw,ifirm_w,ifirm)): newrow[colno_w] = -1
         #always generate stability constraints, include in LP formulation only if asked(below)
         stab_columns = np.row_stack((stab_columns,newrow))
         #rhs_stab = np.append(rhs,-1)
-        rowlabels_stab = rowlabels_stab + ['Stability' ]
+        rowlabels_stab = rowlabels_stab + [f'St. f: {ifirm}  wkr:{iset}' ]
         if Dual:
             obj = obj + newrow*(1)
     stab_columns = stab_columns[1:,:] #adjust out the initial column of all zeros
@@ -295,7 +295,10 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
     for indx, item in enumerate(colsubsets): #for each subset of columns
         #item is the current subset of columns we are working on
         #indx is the position in colsubsets where that item resides
-        if len(item) == 0: is_independent[0,indx] = 0
+        print(f">>>>>>>>Testing column set: {item}")
+        if len(item) == 0: 
+            is_independent[0,indx] = 1
+            continue
         if len(item) == 1: continue
         test_list = list(itertools.combinations(tuple(item),2)) #all sets of size 2 from the set of columns given by item
         for xtpl in test_list:
@@ -308,14 +311,13 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
     stringout = ''
     for indx,item in enumerate(is_independent[0,:]):
         if (item == 1): #this entry corresponds to an independent set
-            solution_count += 1
             newstring = ''
             newstring = newstring + f"\n #{solution_count}  Independent set of columns: {colsubsets[indx]}" + "\n"
-            cols = colsubsets[indx] #find the correspoinding set of workers
+            cols = colsubsets[indx] #find the corresponding set of workers
             newindcol = np.zeros((nc,1)) #create a column length vector to record which columns are active.
-            for item in cols:
-                newstring = newstring + f"Firm: {firms[item]} Subset: {teams[item]}" + "\n"
-                newindcol[item,0] = 1
+            for itemx in cols:
+                newstring = newstring + f"Firm: {firms[itemx]} Subset: {teams[itemx]}" + "\n"
+                newindcol[itemx,0] = 1
             indcol = np.column_stack((indcol,newindcol))    
             if (len(StabConst) != 0 ):
                 stabtest = np.matmul(StabConst,newindcol)
@@ -330,6 +332,7 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
                     stringout = stringout + newstring
             else:
                 stringout = stringout + newstring
+            solution_count += 1
     indcol = indcol[:,1:]
     return(indcol,stringout)
             
