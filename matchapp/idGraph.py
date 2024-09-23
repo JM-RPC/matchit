@@ -22,9 +22,10 @@ def makeSegs(imat,nodes):
     if len(nodes) != n : return []
     lines=[[]]
     for ix in range(0,n):
-        for jx in range(0,ix):
+        for jx in range(0,n):
             if (imat[ix,jx] == 1):
                 lines = lines + [[nodes[ix],nodes[jx]]]
+                #print(f"line from node({ix}) to node({jx}).")
     lines = lines[1:]
     return lines
         

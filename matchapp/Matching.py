@@ -76,18 +76,22 @@ def checkTU(mat,Verbose = False, Tol = 1e-10):
 
 def firmPref(ifirm, preflist, set1, set2):
     prefers = False
+    if (set2 not in preflist[ifirm]) & (set1 not in preflist[ifirm]):
+        return("error")#under current config, this should not happen
     if set2 in preflist[ifirm]:
         if preflist[ifirm].index(set1)  <  preflist[ifirm].index(set2):
             prefers = True
         else:
             prefers = False
-    else:
-        prefers = False
+    else: #in particular if set2 is the empty set (set()) any set in it's preference ordering is preferred
+        prefers = True
     return(prefers)
 
 def workerPref(iworker, preflist, firm1, firm2):
     prefers = False
-    if firm1 not in preflist[iworker]:
+    if (firm1 not in preflist[iworker]) & (firm2 not in preflist[iworker]) :
+        return("error") #under current config, this should not happen
+    if firm1 not in preflist[iworker]: #any firm in list is preferred to nothing
         prefers = False
     else:
         if firm2 in preflist[iworker]:
@@ -95,8 +99,8 @@ def workerPref(iworker, preflist, firm1, firm2):
                 prefers = True
             else:
                 prefers = False
-        else:
-            prefers = False
+        else: # firm2 is not in pref list, firm1 is
+            prefers = True
     return(prefers)    
     
     
@@ -126,7 +130,7 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
     #construct the incidence matrix column-wise
     #*******************************************
     for ix in range(1,nf+1,1): #for each firm 1,...,nf
-        for jx in range(0,len(p[ix]),1): #and each set in that firm's preference list
+        for jx in range(0,len(p[ix]),1): #and each for set in that firm's preference list
             #create a characteristic or indicator vector (0 if a worker is not in the set 1 if worker is)
             #a and b are 0 offset lists, pw and p start at 1 --the 0 entry is empty
 
@@ -200,15 +204,22 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
                 continue
             if (firmPref(ifirm,p,set(setitem[1]),set(iset))):
                 newrow[colno] = -1
-        #now the hard part: for every worker in iset scan all firm/set pairs put a 1 in the column if all workers in iset  prefers that firm ifirm.
+        #now the hard part: for every worker in iset scan all firm/set pairs in which that worker resides, put a 1 in the column if all workers in iset  prefers that firm ifirm.
         for iwk in iset: #for each worker in iset
             for item_w in colname: #look through all columns (possible firm-team matches)
                 colno_w = colname.index(item_w)
                 ifirm_w = item_w[0]
                 iset_w = item_w[1]
+                if (ifirm_w == ifirm) & (set(iset_w).issubset(set(iset))):
+                    continue
                 if (iwk in iset_w):  #if our worker iwk is in the set iset_w
                     for iwk_z in iset_w: #unless one or more workers in the set iset_w prefer ifirm to the firm attached to that column ifirm_w
-                        if (workerPref(iwk_z,pw,ifirm_w,ifirm)): newrow[colno_w] = -1
+                        if (workerPref(iwk_z,pw,ifirm_w,ifirm)): 
+                            newrow[colno_w] = -1
+                            break
+                        else:
+                            newrow[colno_w] = 0
+
         #always generate stability constraints, include in LP formulation only if asked(below)
         stab_columns = np.row_stack((stab_columns,newrow))
         #rhs_stab = np.append(rhs,-1)
@@ -236,6 +247,87 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
 #              default objective function is all 1's
 #teams = the team for each column
 #firms = the firm # for each column
+
+def isStable(pw, pf, firms, teams , icol):
+    #nw = #workers
+    #nf = #firms
+    #pf = firm preferences (maybe not needed) list of lists of workers use entries 1 though nf
+    #pw = worker prefs list of firms use entries 1 through nw
+    #firms = column list of firms
+    #teams = column list of team assigned (list of tuples)
+    #icol = a proposed independent set (i.e.matching))
+    #return: 0 is stable, 1 is not firm individually rational (IR),  2 is not worker IR, 3 is not stable
+    #check firm individual rationality (if assgned a single set is IR because all possible sets for a firm are in that firms choice set)
+    nw = len(pw)-1 # pw, pf one longer than corresponding number of firms/workers
+    nf = len(pf)-1
+    # firms_matched = np.zeros((1,nf+1))#record the firms that get teams in entries 1 to nf+1 of firms_matched
+    # for ixt in range(0,len(icol)):
+    #     if icol[ixt] > 0:
+    #         firms_matched[0,firms[ixt]] += 1
+    # if (max(firms_matched[0,:]) > 1): #if any firm gets more than one team raise the issue with management
+    #     return(1,'')  
+    
+    # # check worker IR  shouldn't need this non worker IR team assignments are eliminated at problem formulation.
+    # for ixt in range(0,len(icol)):
+    #     if ixt == 0: #column ixt not part of an independent set
+    #         continue
+    #     else:
+    #         ifirm = firms[ixt]
+    #         wteam = teams[ixt]
+    #         for ixw in teams[ixt]:
+    #             if workerPref(ixw,pw,ifirm,0): 
+    #                 continue   
+    #             else:
+    #                 return(1,'')
+    # #return(0)
+    # #check stability* by hand, one firm and a subset of workers who can improve their
+    # #match
+    firm_match = [set() for ix in range(nf+1)]#the set matched to each firm (0 for none)]
+    worker_match = np.zeros((1,nw+1))
+    for ixt in range(0,len(icol)):
+        if icol[ixt] == 0: continue
+        ixf = firms[ixt]
+        xw = teams[ixt]
+        if (firm_match[ixf] != set()):
+            return(1,'Firm matched to two sets.')
+        else:
+            firm_match[ixf] =  xw # firms[ixt] has been matched to team xw
+            for ixw in xw:
+                if worker_match[0,ixw] != 0:
+                    return(4,'') #multiply assigned worker
+                else:
+                    worker_match[0,ixw]=ixf
+
+    outstr = "Implied Matching: \n"
+    firmlst = [f"Firm: {item} Subset: {firm_match[item]}" for item in range(1,nf+1)]
+    worklst = [f"Worker: {item} Firm: {worker_match[0,item]}" for item in range(1,nw+1)]
+    outstr += "\n".join(firmlst) + "\n"
+    outstr += "\n".join(worklst) + "\n"
+    #outstr += "\n" + f"Independent Set: {icol[0]}"
+    #outstr +=  "\n" + f"Firm Assignments: {firm_match}" + "\n"
+    #outstr +=  "\n" + f"Worker Assignments: {worker_match}" + "\n"
+
+    subset_preferring = [set() for ix in range(nf+1)]
+    for ixf in range(1,nf+1):
+        #for firm ixf find the set of workers that prefers ixf to their current match
+        for ixw in range(1,nw+1):
+            if (workerPref(ixw,pw,ixf,worker_match[0,ixw])):
+                subset_preferring[ixf].add(ixw)
+        outstr += "\n" + f"Workers preferring firm {ixf}: {subset_preferring[ixf]}"
+    #outstr = outstr + "\n" +f"Workers preferring each firm {subset_preferring}" + "\n"
+    #now look for a blocking coalition: one firm and a set of workers
+    #for each firm add take the union of the set of workers that prefer that firm to their matched firm
+    #check to see if this set contains a set that the firm likes better than it's matched set
+    for ixf in range(1,nf+1):
+        if (subset_preferring[ixf] == set()): continue
+        matched_set = firm_match[ixf]
+        test_set = matched_set.union(subset_preferring[ixf])
+        for ixs in pf[ixf]:
+            if (ixs.issubset(test_set)) & (firmPref(ixf,pf,ixs,matched_set)):
+                outstr += f"Blocked by Firm:{ixf} Subset:{ixs}"
+                return(3,f"Blocked by Firm:{ixf} Subset:{ixs}")
+    #outstr += "Stable"
+    return(0,outstr)
 
 
 def displayLP(constraints = [], rhs = [], obj = [], teams = [], firms = [],rowlabels = []):
@@ -273,7 +365,7 @@ def doIntersectionGraph(constraint_mat):
                 intersection_mat[ic,ir] = 1
     return(intersection_mat)
     
-def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
+def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False, Verbose = False):
     #very inefficient brute force enumeration
     #enumerate all of subsets of columns
     #inmat is the incidence matrix for the intersection graph of the constraint matrix
@@ -309,29 +401,34 @@ def doIndependentSets(inmat,teams,firms, StabConst = [],Verbose = False):
     indcol = np.zeros((nc,1))
     solution_count = 0
     stringout = ''
+    newstring = ''
     for indx,item in enumerate(is_independent[0,:]):
         if (item == 1): #this entry corresponds to an independent set
-            newstring = ''
-            newstring = newstring + f"\n #{solution_count}  Independent set of columns: {colsubsets[indx]}" + "\n"
+            newstring = '\n\n*************************************\n'
+            newstring += f"set #: {indx}, solution count: {solution_count}" + "\n"
+            newstring += f"Independent set of columns: {colsubsets[indx]}" + "\n"
+            newstring += '************************************* \n'
             cols = colsubsets[indx] #find the corresponding set of workers
             newindcol = np.zeros((nc,1)) #create a column length vector to record which columns are active.
+            newstring += "Independent Set Details:" + "\n"
             for itemx in cols:
-                newstring = newstring + f"Firm: {firms[itemx]} Subset: {teams[itemx]}" + "\n"
+                newstring += f"Firm: {firms[itemx]} Subset: {teams[itemx]}" + "\n"
                 newindcol[itemx,0] = 1
             indcol = np.column_stack((indcol,newindcol))    
             if (len(StabConst) != 0 ):
                 stabtest = np.matmul(StabConst,newindcol)
                 newstring += f" stability calculation :{np.array_str(stabtest[:,0])} \n"
-                if max(stabtest[:,0]) > -1.0 :
-                    newstring += "----------------- Not Stable*  ---------------\n"
-                    if (Verbose): 
-                        stringout += newstring #verbose mode:  report all matchings
+            sstatus,stabstr = isStable(pw,pf,firms,teams,newindcol)
+            if sstatus > 0:
+                newstring += f"{stabstr}\n -------------- Not Stable*  ------------sstatus= {sstatus}\n"
+                if (not StabOnly): 
+                        stringout += newstring + stabstr #verbose mode:  report all matchings
                         #stringout += f"{np.array_str(stabtest)}"
-                else:
-                    newstring += "+++++++++++++++++  Stable*    ++++++++++++++++\n "
-                    stringout = stringout + newstring
             else:
-                stringout = stringout + newstring
+                newstring += f"{stabstr} \n++++++++++++++ Stable*    +++++++++++++sstatus= {sstatus}\n "
+                stringout += newstring
+            #else:
+            #    stringout = stringout + newstring
             solution_count += 1
     indcol = indcol[:,1:]
     return(indcol,stringout)
@@ -534,12 +631,18 @@ if __name__ == "__main__":
         print(const_mat)
         print("intersection graph incidence matrix")
         print(imat)
-        independent_columns,txt_out = doIndependentSets(imat, teams, firms, StabConst = stab_constr)
+        independent_columns,txt_out = doIndependentSets(imat, teams, firms,pw, pf,  StabConst = stab_constr,StabOnly = False)
         print(txt_out)
         print("Extremal (integral) feasible solutions")
         print(independent_columns)
         print("Are any of the integer solutions stable?")
         c = np.matmul(stab_constr,independent_columns)
+        nr,nc = independent_columns.shape
+        for ixc in range(0,nc):
+            col = independent_columns[:,ixc]
+            stab_status = isStable(pw,pf,firms,teams,col)
+            print(f"{ixc}: stability status = {stab_status}")
+
         print(c)
 
     

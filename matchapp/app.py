@@ -208,13 +208,13 @@ def server(input: Inputs, output: Outputs, session: Session):
         imat = Matching.doIntersectionGraph(cmat())
         imat_G.set(imat)
         if (input.stype() == "All Extreme Points"): 
-            vbs = True
+            stonly = False
         else:
-            vbs = False
+            stonly = True
         if "add stability const." in input.genoptions():
             outstring = "The enumeration process for extreme points requires a non-negative binary constraint matrix.\n  Remove the stability constraints and try again!"
         else:
-            independent_columns, outstring = Matching.doIndependentSets(imat, teams_LP() , firms_LP(), StabConst = stab_constr_LP(), Verbose = vbs)
+            independent_columns, outstring = Matching.doIndependentSets(imat, teams_LP() , firms_LP(), pw(), pf(), StabConst = stab_constr_LP(), Verbose = True, StabOnly = stonly)
             indep_cols.set(independent_columns)
             nr,nc = independent_columns.shape
             ui.update_numeric("iset", min=0, max=nc-1)
@@ -332,7 +332,7 @@ def server(input: Inputs, output: Outputs, session: Session):
     def subgraphPic():
         if (input.iset() == -1): return
         active = indep_cols()[:,input.iset()]
-        print(f">>>>>>>>set:{input.iset()} active: {active}")
+        #print(f">>>>>>>>set:{input.iset()} active: {active}")
         imat = np.array(imat_G())
         if imat == []: 
             print("No incidence matrix, generate extreme points first.")
