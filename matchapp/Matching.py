@@ -431,6 +431,7 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
             #    stringout = stringout + newstring
             solution_count += 1
     indcol = indcol[:,1:]
+    if stringout == '': stringout = 'Nada'
     return(indcol,stringout)
             
     

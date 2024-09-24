@@ -66,7 +66,9 @@ def readData(inlist = []):
             if sum([0 if item in "][}{:0123456789," else 1 for item in instring])>0:
                 return(0,0,[],[],f"Typo? {instring}")
             #now process it
-            firmno = int(instring.split(':')[0])
+            temp = instring.split(':')
+            if len(temp)<=1: return(0,0,[],[],f"Missing ':' in {instring}?")
+            firmno = int(temp[0])
             if firmno> nf:
                 return(0,0,[],[],f"firm number out of range at: {instring}")
             outiter = re.finditer(r'\{.*?\}',instring.split(':')[1])
@@ -82,6 +84,7 @@ def readData(inlist = []):
                 return(0,0,[],[],f"Typo? {instring}")
             #now process it
             temp = instring.split(':')
+            if len(temp)<=1: return(0,0,[],[],f"Missing ':' in {instring}?")
             workerno = int(temp[0])
             if workerno > nw: 
                 return(0,0,[],[],f"worker number {workerno} out of range at:{instring}")
