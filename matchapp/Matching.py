@@ -76,21 +76,24 @@ def checkTU(mat,Verbose = False, Tol = 1e-10):
 
 def firmPref(ifirm, preflist, set1, set2):
     prefers = False
-    if (set2 not in preflist[ifirm]) & (set1 not in preflist[ifirm]):
-        return("error")#under current config, this should not happen
-    if set2 in preflist[ifirm]:
-        if preflist[ifirm].index(set1)  <  preflist[ifirm].index(set2):
+#    if (set2 not in preflist[ifirm]) & (set1 not in preflist[ifirm]):
+#        return("error")#under current config, this should not happen
+    if set1 not in preflist[ifirm]:
+        prefers = False
+    else:
+        if set2 in preflist[ifirm]:
+            if preflist[ifirm].index(set1)  <  preflist[ifirm].index(set2):
+                prefers = True
+            else:
+                prefers = False
+        else: #in particular if set2 is the empty set (set()) any set in it's preference ordering is preferred
             prefers = True
-        else:
-            prefers = False
-    else: #in particular if set2 is the empty set (set()) any set in it's preference ordering is preferred
-        prefers = True
     return(prefers)
 
 def workerPref(iworker, preflist, firm1, firm2):
     prefers = False
-    if (firm1 not in preflist[iworker]) & (firm2 not in preflist[iworker]) :
-        return("error") #under current config, this should not happen
+#    if (firm1 not in preflist[iworker]) & (firm2 not in preflist[iworker]) :
+#        return("error") #under current config, this should not happen
     if firm1 not in preflist[iworker]: #any firm in list is preferred to nothing
         prefers = False
     else:
@@ -303,9 +306,9 @@ def isStable(pw, pf, firms, teams , icol):
     worklst = [f"Worker: {item} Firm: {worker_match[0,item]}" for item in range(1,nw+1)]
     outstr += "\n".join(firmlst) + "\n"
     outstr += "\n".join(worklst) + "\n"
-    #outstr += "\n" + f"Independent Set: {icol[0]}"
-    #outstr +=  "\n" + f"Firm Assignments: {firm_match}" + "\n"
-    #outstr +=  "\n" + f"Worker Assignments: {worker_match}" + "\n"
+    outstr += "\n" + f"Independent Set: {icol[0]}"
+    outstr +=  "\n" + f"Firm Assignments: {firm_match}" + "\n"
+    outstr +=  "\n" + f"Worker Assignments: {worker_match}" + "\n"
 
     subset_preferring = [set() for ix in range(nf+1)]
     for ixf in range(1,nf+1):
