@@ -304,11 +304,11 @@ def isStable(pw, pf, firms, teams , icol):
     outstr = "Implied Matching: \n"
     firmlst = [f"Firm: {item} Subset: {firm_match[item]}" for item in range(1,nf+1)]
     worklst = [f"Worker: {item} Firm: {worker_match[0,item]}" for item in range(1,nw+1)]
-    outstr += "\n".join(firmlst) + "\n"
-    outstr += "\n".join(worklst) + "\n"
-    outstr += "\n" + f"Independent Set: {icol[0]}"
-    outstr +=  "\n" + f"Firm Assignments: {firm_match}" + "\n"
-    outstr +=  "\n" + f"Worker Assignments: {worker_match}" + "\n"
+    outstr += "| ".join(firmlst) + "\n"
+    outstr += "| ".join(worklst) + "\n"
+    #outstr += "\n" + f"Independent Set: {icol[0]}"
+    #outstr +=  "\n" + f"Firm Assignments: {firm_match}" + "\n"
+    #outstr +=  "\n" + f"Worker Assignments: {worker_match}" + "\n"
 
     subset_preferring = [set() for ix in range(nf+1)]
     for ixf in range(1,nf+1):
@@ -383,7 +383,7 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
 
     #print(f" Cardinality of power set: {len(colsubsets)}")  #just checking
 
-    #now test every subset is_inedependent 
+    #now test every subset record results in is_inedependent 
     #is an indicator for whether or not the given subset is an independent set
     
     is_independent = np.ones((1,len(colsubsets))) #assume a subset of columns is independent until proven dependent
@@ -394,7 +394,9 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
         if len(item) == 0: 
             is_independent[0,indx] = 1
             continue
-        if len(item) == 1: continue
+        if len(item) == 1: 
+            is_independent[0,indx] = 1
+            continue
         test_list = list(itertools.combinations(tuple(item),2)) #all sets of size 2 from the set of columns given by item
         for xtpl in test_list:
             if inmat[xtpl[1],xtpl[0]] == 1: #xptl[1] and xptl[2] have an arc between them (inmat is symmetric as arcs are undirected only need to check one of (i,j) and (j,i))
@@ -405,7 +407,10 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
     solution_count = 0
     stringout = ''
     newstring = ''
+    stringout = f"Number of column subsets enumerated: {len(colsubsets)} \n"
+    stringout += f"Number of feasible solutions (independent sets) found: {sum(is_independent[0,:])} \n"
     for indx,item in enumerate(is_independent[0,:]):
+        sstatus = 0
         if (item == 1): #this entry corresponds to an independent set
             newstring = '\n\n*************************************\n'
             newstring += f"set #: {indx}, solution count: {solution_count}" + "\n"
@@ -423,13 +428,19 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
                 newstring += f" stability calculation :{np.array_str(stabtest[:,0])} \n"
             sstatus,stabstr = isStable(pw,pf,firms,teams,newindcol)
             if sstatus > 0:
-                newstring += f"{stabstr}\n -------------- Not Stable*  ------------sstatus= {sstatus}\n"
-                if (not StabOnly): 
-                        stringout += newstring + stabstr #verbose mode:  report all matchings
+                if (not StabOnly): #we are printing details on the non-stable matchings
+                    newstring += f"{stabstr}\n -------------- Not Stable*  ------------sstatus= {sstatus}\n"
+                    if Verbose:
+                        newstring +=  stabstr #verbose mode:  report all matchings
                         #stringout += f"{np.array_str(stabtest)}"
+                else: #we are not printing anything for non-stable matchings
+                    newstring = ' '
             else:
-                newstring += f"{stabstr} \n++++++++++++++ Stable*    +++++++++++++sstatus= {sstatus}\n "
-                stringout += newstring
+                if Verbose:
+                    newstring += f"{stabstr} \n++++++++++++++ Stable*    +++++++++++++sstatus= {sstatus}\n "
+                else:
+                    newstring += f"++++++++++++++ Stable*    +++++++++++++sstatus= {sstatus}\n "
+            stringout += newstring
             #else:
             #    stringout = stringout + newstring
             solution_count += 1

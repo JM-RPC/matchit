@@ -93,8 +93,9 @@ def readData(inlist = []):
             pw[workerno] = firmlist
     #check numbering consistency
     for setx in pf[1:]:
-        if (max([max(item) for item in setx]) > nw):
-            return(0,0,[],[],f"worker number out of range in firm prefs: {setx} workers indicated {nw}")
+        if setx != []:
+            if (max([max(item) for item in setx]) > nw):
+                return(0,0,[],[],f"worker number out of range in firm prefs: {setx} workers indicated {nw}")
     for firmx in pw[1:]:
         if max(firmx) > nf:
             return(0,0,[],[],f"firm number {max(firmx)} out of range in worker prefs: {firmx} firms indicated = {nf}")

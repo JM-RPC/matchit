@@ -88,6 +88,7 @@ app_ui = ui.page_navbar(
         ui.row(
                 ui.column(3,offset=0,*[ui.input_action_button("goextreme","Enumerate Extreme Points",width = '300px')]),
                 ui.column(6,offset=0,*[ui.input_radio_buttons("stype","Show: ",choices = ['All Extreme Points','Stable Extreme Points Only'],inline = True)]),
+                ui.column(3,offset=0,*[ui.input_radio_buttons("vmode","Output: ",choices = ['Terse','Verbose'],selected = 'Terse',inline = True)]),
             ),
         ui.row(
                 ui.output_text_verbatim("extremelog"),
@@ -214,7 +215,11 @@ def server(input: Inputs, output: Outputs, session: Session):
         if "add stability const." in input.genoptions():
             outstring = "The enumeration process for extreme points requires a non-negative binary constraint matrix.\n  Remove the stability constraints and try again!"
         else:
-            independent_columns, outstring = Matching.doIndependentSets(imat, teams_LP() , firms_LP(), pw(), pf(), StabConst = stab_constr_LP(), Verbose = True, StabOnly = stonly)
+            if input.vmode() == 'Verbose':
+                vm = True
+            else:
+                vm = False
+            independent_columns, outstring = Matching.doIndependentSets(imat, teams_LP() , firms_LP(), pw(), pf(), StabConst = stab_constr_LP(), Verbose = vm, StabOnly = stonly)
             indep_cols.set(independent_columns)
             nr,nc = independent_columns.shape
             ui.update_numeric("iset", min=0, max=nc-1)
