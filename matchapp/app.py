@@ -31,7 +31,7 @@ from datetime import datetime
 
 
 app_ui = ui.page_navbar( 
-    ui.nav_panel("Input",
+    ui.nav_panel("Input", 
         ui.row(
             ui.HTML("<p>Either choose file or type data in below, then click read data when ready to proceed.</p>"),
             ),
@@ -66,7 +66,7 @@ app_ui = ui.page_navbar(
         ui.row(
                 ui.column(3, offset = 0,*[ui.input_action_button('generateLP',"Generate LP")]),
                 ui.column(3, offset = 0,*[ui.input_action_button('solveLP',"Solve LP")]),
-                ui.column(6, offset = 0,*[ui.input_checkbox_group("genoptions","Options: ",choices = ["add 1 set per firm","add stability const.","dualize stab. constr."],
+                ui.column(6, offset = 0,*[ui.input_checkbox_group("genoptions","Options: ",choices = ["add 1 set per firm","add stability const.","dualize stab. constr.","card. match"],
                           width = "500px",inline = True)]),
             ),
         ui.row(
@@ -111,7 +111,7 @@ app_ui = ui.page_navbar(
         ),
 #     ui.nav_panel("Optimization",
 #                  ),
-underline = True, title = "Stable Matcher 3.0 ")
+underline = True, title = "Stable Matcher 3.0 ", position = "fixed_top")
                  
 def server(input: Inputs, output: Outputs, session: Session):
     
@@ -240,13 +240,17 @@ def server(input: Inputs, output: Outputs, session: Session):
         oneper = False
         dostab = False
         dodual = False
+        cdopt = False
         if ("add 1 set per firm" in input.genoptions()):
             oneper = True
         if ("add stability const." in input.genoptions()):
             dostab = True
         if ("dualize stab. constr." in input.genoptions()):
             dodual = True
-        cols, rhs, obj, firm_no, set_assgn, rowlabels, stab_columns = Matching.doLP(nw(), nf(),pw(),pf(),DoOneSet = oneper, DoBounds = False, StabilityConstraints=dostab, Dual = dodual)
+        if ("card. match" in input.genoptions()):
+            dodual = False
+            cdopt = True
+        cols, rhs, obj, firm_no, set_assgn, rowlabels, stab_columns = Matching.doLP(nw(), nf(),pw(),pf(),DoOneSet = oneper, DoBounds = False, StabilityConstraints=dostab, Dual = dodual, OFcard = cdopt)
         dfout = Matching.displayLP(constraints = cols, rhs = rhs, obj = obj, teams = set_assgn, firms = firm_no, rowlabels = rowlabels)
         df_LP.set(dfout)
 

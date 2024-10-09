@@ -108,7 +108,7 @@ def workerPref(iworker, preflist, firm1, firm2):
     
     
     
-def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityConstraints = True, Dual = False, Verbose = False):
+def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityConstraints = True, Dual = False, OFcard = False, Verbose = False):
     #Note: workers and firms are indexed 1-offset: workers 1,...,m and firms 1,...,n.  Python arrays/lists are 0-offset, an
     #array with n components is indexed 0,...,n-1.  Sooo... 
     #p is a list of lists that holds firm preferences: p[1] is a list of sets of workers (teams) in preference order for firm 1. 
@@ -207,22 +207,17 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
                 continue
             if (firmPref(ifirm,p,set(setitem[1]),set(iset))):
                 newrow[colno] = -1
-        #now the hard part: for every worker in iset scan all firm/set pairs in which that worker resides, put a 1 in the column if all workers in iset  prefers that firm ifirm.
+        #now the hard part: for every worker in iset scan all firm/set pairs. 
+        #For sets in which worker iwk resides, put a 1 in the column if iwk prefers that firm
         for iwk in iset: #for each worker in iset
             for item_w in colname: #look through all columns (possible firm-team matches)
                 colno_w = colname.index(item_w)
                 ifirm_w = item_w[0]
                 iset_w = item_w[1]
-                if (ifirm_w == ifirm) & (set(iset_w).issubset(set(iset))):
+                if (ifirm_w == ifirm) & (set(iset_w).issubset(set(iset))): #do not apply this to the column being processed (ifirm iset) it's already -1
                     continue
-                if (iwk in iset_w):  #if our worker iwk is in the set iset_w
-                    for iwk_z in iset_w: #unless one or more workers in the set iset_w prefer ifirm to the firm attached to that column ifirm_w
-                        if (workerPref(iwk_z,pw,ifirm_w,ifirm)): 
-                            newrow[colno_w] = -1
-                            break
-                        else:
-                            newrow[colno_w] = 0
-
+                if (iwk in iset_w) & (workerPref(iwk,pw,ifirm_w,ifirm)):  #if our worker iwk is in the set iset_w and prefers ifirm_w
+                    newrow[colno_w] = -1
         #always generate stability constraints, include in LP formulation only if asked(below)
         stab_columns = np.row_stack((stab_columns,newrow))
         #rhs_stab = np.append(rhs,-1)
@@ -230,8 +225,11 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
         if Dual:
             obj = obj + newrow*(1)
     stab_columns = stab_columns[1:,:] #adjust out the initial column of all zeros
-    if  not Dual:
+    if  not Dual: #if we're not dualizing out the stability constraint just put in -1's
         obj = obj - 1
+        if (OFcard): #unless we're trying to match as many workers as possible, then use set cardinality as objective coef.
+            obj = np.array([len(item) for item in set_assgn])
+            obj = obj * (-1)
     if StabilityConstraints:
         nrs,ncs = stab_columns.shape
         rhs_stab = -1*np.ones((nrs,1))
@@ -263,26 +261,6 @@ def isStable(pw, pf, firms, teams , icol):
     #check firm individual rationality (if assgned a single set is IR because all possible sets for a firm are in that firms choice set)
     nw = len(pw)-1 # pw, pf one longer than corresponding number of firms/workers
     nf = len(pf)-1
-    # firms_matched = np.zeros((1,nf+1))#record the firms that get teams in entries 1 to nf+1 of firms_matched
-    # for ixt in range(0,len(icol)):
-    #     if icol[ixt] > 0:
-    #         firms_matched[0,firms[ixt]] += 1
-    # if (max(firms_matched[0,:]) > 1): #if any firm gets more than one team raise the issue with management
-    #     return(1,'')  
-    
-    # # check worker IR  shouldn't need this non worker IR team assignments are eliminated at problem formulation.
-    # for ixt in range(0,len(icol)):
-    #     if ixt == 0: #column ixt not part of an independent set
-    #         continue
-    #     else:
-    #         ifirm = firms[ixt]
-    #         wteam = teams[ixt]
-    #         for ixw in teams[ixt]:
-    #             if workerPref(ixw,pw,ifirm,0): 
-    #                 continue   
-    #             else:
-    #                 return(1,'')
-    # #return(0)
     # #check stability* by hand, one firm and a subset of workers who can improve their
     # #match
     firm_match = [set() for ix in range(nf+1)]#the set matched to each firm (0 for none)]
@@ -390,7 +368,7 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
     for indx, item in enumerate(colsubsets): #for each subset of columns
         #item is the current subset of columns we are working on
         #indx is the position in colsubsets where that item resides
-        print(f">>>>>>>>Testing column set: {item}")
+        #print(f">>>>>>>>Testing column set: {item}")
         if len(item) == 0: 
             is_independent[0,indx] = 1
             continue
@@ -425,11 +403,16 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
             indcol = np.column_stack((indcol,newindcol))    
             if (len(StabConst) != 0 ):
                 stabtest = np.matmul(StabConst,newindcol)
-                newstring += f" stability calculation :{np.array_str(stabtest[:,0])} \n"
+                if Verbose:
+                    newstring += f" stability calculation :{np.array_str(stabtest[:,0])} \n"
+                temp = max(stabtest[:,0])
+                if (temp < 0): 
+                    cstatus = "Stable*" 
+                else: cstatus = "Not Stable*"
             sstatus,stabstr = isStable(pw,pf,firms,teams,newindcol)
             if sstatus > 0:
                 if (not StabOnly): #we are printing details on the non-stable matchings
-                    newstring += f"{stabstr}\n -------------- Not Stable*  ------------sstatus= {sstatus}\n"
+                    newstring += f"{stabstr}\n --------- Not Stable*  ------sstatus = {sstatus}--cstatus = {cstatus}\n"
                     if Verbose:
                         newstring +=  stabstr #verbose mode:  report all matchings
                         #stringout += f"{np.array_str(stabtest)}"
@@ -437,9 +420,9 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
                     newstring = ' '
             else:
                 if Verbose:
-                    newstring += f"{stabstr} \n++++++++++++++ Stable*    +++++++++++++sstatus= {sstatus}\n "
+                    newstring += f"{stabstr} \n++++++++++ *****Stable***  +++sstatus  = {sstatus}--cstatus = {cstatus} \n "
                 else:
-                    newstring += f"++++++++++++++ Stable*    +++++++++++++sstatus= {sstatus}\n "
+                    newstring += f" ++++++++++ *****Stable***  +++sstatus = {sstatus}--cstatus = {cstatus} \n "
             stringout += newstring
             #else:
             #    stringout = stringout + newstring
