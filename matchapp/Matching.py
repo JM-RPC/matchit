@@ -69,7 +69,7 @@ def checkTU(mat,Verbose = False, Tol = 1e-10):
                 count = count +1
                 if (np.abs(d)>Tol) & (np.abs(d-1)>Tol) & (np.abs(d+1)>Tol): 
                     ISTU = False
-                    return ISTU, f">>Is NOT TU<< \n Determinant: {d} \n iteration: {count}, \n Submatrix: \n {np.array_str(b)}"
+                    return ISTU, f">>Is NOT TU<< \n Determinant: {d} \n iteration: {count}, \n Submatrix: \n {np.array_str(b)} \n rows: {ix}\n cols: {jx}"
         cursize += 1 
     return ISTU, f">>IS TU<< Number of determinants tested: {count}"
 
@@ -590,7 +590,7 @@ if __name__ == "__main__":
     print("########################")
     
     ####Create the constraint matrix
-    const_mat,rhs,obj,firms,teams,rowlab,stab_constr = doLP(nw, nf, pw, pf, DoOneSet = True, DoBounds = False, StabilityConstraints = False, Dual = False, Verbose = Vbose)
+    const_mat,rhs,obj,firms,teams,rowlab,stab_constr = doLP(nw, nf, pw, pf, DoOneSet = True, DoBounds = False, StabilityConstraints = True, Dual = False, Verbose = Vbose)
     
     dfLP = displayLP(constraints = const_mat, rhs = rhs, obj = obj, teams = teams, firms = firms, rowlabels = rowlab)
     if Vbose:

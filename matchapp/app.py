@@ -1,4 +1,4 @@
- #!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Sun Aug 25 13:33:04 2024
@@ -42,13 +42,16 @@ app_ui = ui.page_navbar(
                 ui.input_text_area("inputdatalog","Input Data (editable):",value = '-', width = "600px", height = "400px")
             ),        
         ui.row(
-                #ui.column(3,offset=0,*[ui.input_action_button("datalogGo","Show Data (after reading)",width = '300px')]),
+                #ui.column(3,offset=0,*[ui.input_action_button("datalogGo","Show Data (after reading)",width = '600px')]),
             ),
         ui.row(
-                ui.column(3,offset=0,*[ui.input_action_button("doUpdate","Read Input Data",width = '200px')]),
-                ui.column(2,offset =0),
-                ui.column(3,offset = 0,*[ui.download_button("download_data","Save Input Data",width = "200px")]),
-                ui.column(4,offset = 0)
+                ui.column(2,offset = 0,*[ui.input_action_button("doUpdate","Read Input Data",width = '200px')]),
+                #ui.column(1,offset = 0),
+                ui.column(2,offset = 0,*[ui.download_button("download_data","Save Input Data",width = "200px")]),
+                #ui.column(1,offset = 0),
+                ui.column(2,offset = 0,*[ui.input_action_button("doReset","Reset Everything",width = '200px')]),
+                ui.column(6,offset = 0),
+
                 #ui.column(3,offset=0,*[ui.input_action_button("datalogGo","Show Data",width = '300px')]),
                 #ui.column(3,offset=0,*[ui.input_action_button("datalogUpdate","Show Data",width = '300px')])
             ),
@@ -101,7 +104,7 @@ app_ui = ui.page_navbar(
                 
             ),
         ui.row(
-            ui.column(6,offset=0, *[ui.input_numeric("iset","Show Independent Set",-1,min=-2,max=-1,step=1)]),
+            ui.column(6,offset=0, *[ui.input_numeric("iset","Show Independent Set",value = -1,min=-2,max=-1,step=1)]),
             ),
         ui.row( 
                 ui.column(6, offset = 0,*[ui.output_plot("intgraphPic",width = "800px",height="800px")]),
@@ -131,7 +134,35 @@ def server(input: Inputs, output: Outputs, session: Session):
     input_data = reactive.value([]) #this is the cleaned up input data: a list of lines, no spaces, no comments
     output_data = reactive.value([]) # the "compiled" version of the input model for display
     indep_cols = reactive.value([]) #the independent set characteristic vectors for the current intersection graph
-    
+    extreme_points = reactive.value('') #text output from extreme point enumeration.
+    TU_msg = reactive.value('')
+
+    @reactive.effect
+    @reactive.event(input.doReset)
+    def doReset():
+        resetIt()
+        # nw.set(0)
+        # nf.set(0)
+        # cmat.set([])
+        # df_LP.set('')
+        # solution_LP.set('')
+        # output_data.set('')
+        # extreme_points.set('')
+        # TU_msg.set('')
+        # imat_G.set([])
+        # ui.update_numeric("iset",value = -2, min = -2)
+
+    def resetIt():
+        nw.set(0)
+        nf.set(0)
+        cmat.set([])
+        df_LP.set('')
+        solution_LP.set('')
+        output_data.set('')
+        extreme_points.set('')
+        TU_msg.set('')
+        imat_G.set([])
+        ui.update_numeric("iset",value = -2, min = -2)
 
     @render.download(filename="MatchData_"+str(datetime.now())+".txt")
     def download_data():
@@ -152,6 +183,7 @@ def server(input: Inputs, output: Outputs, session: Session):
                 data_in = ReadMatchData.readFile(fpath)
                 #temp = "\n".join(data_in)
                 ui.update_text_area("inputdatalog", value = data_in)
+                resetIt()
                 output_data.set('Click Read Input Data')
                 input_data.set(data_in)
                 return(data_in)
@@ -192,18 +224,22 @@ def server(input: Inputs, output: Outputs, session: Session):
     def datalog(): 
         data = output_data()
         if len(data) == 0: 
-            return('Ooops! Maybe forgot to READ the Input Data, or write the data into the box above? \n click Read Data after reading or entering data.')
+            return('Click Read Data after choosing a file or entering data.')
         else:
             return(data)
 
 
-    @render.text
+    #@render.text
+    @reactive.effect
     @reactive.event(input.goextreme)
-    def extremelog():
+    def extremist():
         nft = nf()
         nwt = nw()
         pft = pf()
         pwt = pw()
+
+        if nft == 0: return('')
+        if cmat() == [] : return('')
 
         #const_mat,rhs,obj,firms,teams,rowlab,stab_constr = Matching.doLP(nwt, nft, pwt, pft, DoOneSet = oneper, DoBounds = False, StabilityConstraints = dostab, Dual = False, Verbose = False)
         imat = Matching.doIntersectionGraph(cmat())
@@ -223,7 +259,14 @@ def server(input: Inputs, output: Outputs, session: Session):
             indep_cols.set(independent_columns)
             nr,nc = independent_columns.shape
             ui.update_numeric("iset", min=0, max=nc-1)
-        return(outstring)
+            extreme_points.set(outstring)
+        return
+        #return(outstring)
+
+    @render.text
+    def extremelog():
+        if extreme_points() == '': return
+        return(extreme_points())
 
     @reactive.effect
     @reactive.event(input.generateLP)
@@ -263,12 +306,12 @@ def server(input: Inputs, output: Outputs, session: Session):
 
     #@render.data_frame
     @render.text
-    @reactive.event(input.generateLP)
+    #@reactive.event(input.generateLP)
     def LPOut():
         dflocal = df_LP()
         if len(dflocal) == 0:
-            return "No Data found.  Maybe forgot to READ the Input Data?"
-        return dflocal.to_string() + '\n' + solution_LP()
+            return "No Data found.  Choose file and then click 'Read Input Data' on Input panel."
+        return dflocal.to_string() + '\n'# + solution_LP()
         #return dflocal
 
     @reactive.effect
@@ -294,23 +337,49 @@ def server(input: Inputs, output: Outputs, session: Session):
 
 
     @render.text
-    @reactive.event(input.gointersection)    
+    @reactive.event(input.gointersection, input.iset)    
     def intgraph():
-        return(np.array_str(imat_G()))
+        if (imat_G() == []): return(' ')
+        ISTU, outstring = Matching.checkTU(imat_G())
+        temp = np.array_str(imat_G())
+        temp += '\n' + outstring
+        #return(np.array_str(imat_G()))
+        return(temp)
     
-    @render.text
+    @reactive.effect
+    #@render.text
     @reactive.event(input.testTU)
-    def TUreport():
+    def e_TU():
+        if cmat() == []: return("No model formulated.")
         ISTU, outstring = Matching.checkTU(cmat(), Tol = 1e-10)
-        return outstring
+        TU_msg.set(outstring)
+        return
+        #return(outstring)
 
+    @render.text
+    def TUreport():
+        if (TU_msg() == ''): return
+        return(TU_msg())
+
+    #@reactive.effect
+    #@reactive.event(input.gointersection)
+    
     @render.plot
-    @reactive.event(input.gointersection)
+    @reactive.event(input.gointersection,input.iset)
     def intgraphPic():
-        imat = np.array(imat_G())
-        if imat == []: 
-            print("No incidence matrix, generate extreme points first.")
+        if (input.iset() == -2): 
+            ui.update_numeric("iset", value = -1,min = -2)
             return
+            fig, ax = plt.subplots(1,1)
+            return(plt.draw())
+            #return(' ')
+        if imat_G() == []: 
+            #print("No incidence matrix, generate extreme points first.")
+            return
+            fig, ax = plt.subplots(1,1)
+            return(plt.draw())
+            #return(' ')
+        imat = np.array(imat_G())
         nr,nc = imat.shape  #should be nxn
         node = idGraph.nodeCoordinates(nr)
         dotx = [item[0] for item in node]
@@ -326,7 +395,7 @@ def server(input: Inputs, output: Outputs, session: Session):
         ax.plot(dotx,doty,'bo')
         for ix in range(0,nr):
             pfac = 1.10
-            nfac = 1.4
+            nfac = 1.5
             vfac = 1.05
             if (dotx[ix] < 0 ): 
                 fac = nfac
@@ -339,13 +408,13 @@ def server(input: Inputs, output: Outputs, session: Session):
     @render.plot
     @reactive.event(input.iset)
     def subgraphPic():
-        if (input.iset() == -1): return
+        if (input.iset() < 0): return
         active = indep_cols()[:,input.iset()]
         #print(f">>>>>>>>set:{input.iset()} active: {active}")
         imat = np.array(imat_G())
         if imat == []: 
             print("No incidence matrix, generate extreme points first.")
-            return
+            return(' ')
         nr,nc = imat.shape  #should be nxn
         node = idGraph.nodeCoordinates(nr)
         dotx = [item[0] for item in node]
@@ -369,9 +438,10 @@ def server(input: Inputs, output: Outputs, session: Session):
             if active[ix] == 1 : clstr = 'r'
             ax.plot(dotx[ix],doty[ix],'o',color = clstr)
         #ax.plot(dotx,doty,'bo',color = clr2)
+        #offsets for the node labels
         for ix in range(0,nr):
             pfac = 1.10
-            nfac = 1.4
+            nfac = 1.5
             vfac = 1.05
             if (dotx[ix] < 0 ): 
                 fac = nfac
@@ -384,6 +454,6 @@ def server(input: Inputs, output: Outputs, session: Session):
 
 
 
-app = App(app_ui, server,debug=True)
+app = App(app_ui, server,debug=False)
 
 
