@@ -310,7 +310,7 @@ def server(input: Inputs, output: Outputs, session: Session):
     def LPOut():
         dflocal = df_LP()
         if len(dflocal) == 0:
-            return "No Data found.  Choose file and then click 'Read Input Data' on Input panel."
+            return "Make sure to choose a file and then click 'Read Input Data' on Input panel before clicking on 'Generate LP' "
         return dflocal.to_string() + '\n'# + solution_LP()
         #return dflocal
 
