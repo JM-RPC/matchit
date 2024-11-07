@@ -22,7 +22,7 @@ def readFile(fpath = 'MatchingData.txt'):
         nolines += 1
         outstring += instring
     #outstr = "\n".join(outstring)
-    print(f"readFile done: lines read {nolines}")
+    #print(f"readFile done: lines read {nolines}")
     return(outstring)
 
 def readData(inlist = []):
@@ -76,6 +76,8 @@ def readData(inlist = []):
             for item in outiter:
                 itemstring = item.group(0).replace('{','').replace('}','')
                 itemset = set([int(itx) for itx in itemstring.split(',')])
+                if (itemset in setlist):
+                    return(0,0,[],[],f"Firm {firmno} has intransitive preferences. Set: {itemstring}")
                 setlist.append(itemset)  
             pf[firmno] = setlist
         elif (wftype == 'W'):
@@ -90,6 +92,8 @@ def readData(inlist = []):
                 return(0,0,[],[],f"worker number {workerno} out of range at:{instring}")
             firmlist = [itx.strip() for itx in temp[1].split(',')]
             firmlist = [int(itx) for itx in firmlist]
+            if (len(set(firmlist))!= len(firmlist)):
+                return(0,0,[],[],f"Worker {workerno} preferences are intransitive")
             pw[workerno] = firmlist
     #check numbering consistency
     for setx in pf[1:]:

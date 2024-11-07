@@ -10,37 +10,58 @@ import numpy as np
 import itertools
 from scipy.optimize import linprog
 from pandas import option_context
+import matplotlib
+import matplotlib.pyplot as plt
+import networkx as nx
 
-def solveIt(CONSTRAINTS =  [], RHS = [], OBJ = [],Verbose = False):
+class LPmodel:
+
+    def __init__(self, number_of_rows, number_of_columns):
+        #This code initializes LPmodel an object
+        self.nr = number_of_rows
+        self.nc = number_of_columns
+        self.entries = 0
+
+    def my_method(self):
+        #this is a method
+        #it has access to the self object
+        self.entries = self.nc * self.nr
+        return(self.entries)
+
+numod1 = LPmodel(11,10)
+
+def solveIt(CONSTRAINTS =  [], RHS = [], OBJ = [],Verbose = False, bds = (0,1), method = "highs"):
     linprogstat = ["Optimization Nominal", "Iteration Limit Reached", "Infeasible", "Unbounded","Numerical Problems, call a professional."]
     if Verbose:
         print("#####################")
         print("### Solving ##########")
         print("#####################")
-    if (len(CONSTRAINTS) == 0): 
-        print("No constraint matrix specified. Quitting.")
-        return
+    #if (len(CONSTRAINTS) == 0): 
+    #    print("No constraint matrix specified. Quitting.")
+    #    return
     
     nr, nc = CONSTRAINTS.shape
-    bds = [(0,1) for ix in np.arange(0,nc)]
+    #bds = [(0,1) for ix in np.arange(0,nc)]
     if len(RHS) == 0:
         RHS = np.ones((nr,1))
     if len(OBJ) ==0:
         OBJ = np.ones((nc,1))*-1
     lp_results = linprog(c = OBJ, A_ub = CONSTRAINTS, b_ub = RHS, bounds = bds)
+#    lp_results = linprog(c = OBJ, A_eq = CONSTRAINTS, b_eq = RHS, bounds = bds)
     if Verbose:
         if lp_results.status == 0:
             print("Optimization successful")
         else:
             print(f"optimization less than successful. Status: {linprogstat[lp_results.status]}")
-            return([],lp_results.status)
-        print(f'Objective : {lp_results.fun}')
-        print(f'Solution: {lp_results.x}')
-        ISINT = [min(np.abs(item-0),np.abs(item-1)) for item in lp_results.x]
-        MXI = max(ISINT)
-        if (MXI > 0.000005): print("Solution not integer!") 
-        else: print(f"Solution integer. Tolerance: {MXI}")
-    return(lp_results.x,lp_results.status)
+            return([],lp_results.status,lp_results)
+        #print(f'Objective : {lp_results.fun}')
+        #print(f'Solution: {lp_results.x}')
+        #print(f'Dual Solution: {lp_results.ineqlin.marginals}')
+        #ISINT = [min(np.abs(item-0),np.abs(item-1)) for item in lp_results.x]
+        #MXI = max(ISINT)
+        #if (MXI > 0.000005): print("Solution not integer!") 
+        #else: print(f"Solution integer. Tolerance: {MXI}")
+    return(lp_results)
     
 def checkTU(mat,Verbose = False, Tol = 1e-10):
     if Verbose:
@@ -108,7 +129,7 @@ def workerPref(iworker, preflist, firm1, firm2):
     
     
     
-def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityConstraints = True, Dual = False, OFcard = False, Verbose = False):
+def doLP(nw, nf, pw = [], p=[], DoOneSet = False, DoWorkers = True,  StabilityConstraints = False, Dual = False, OFcard = False, Verbose = False):
     #Note: workers and firms are indexed 1-offset: workers 1,...,m and firms 1,...,n.  Python arrays/lists are 0-offset, an
     #array with n components is indexed 0,...,n-1.  Sooo... 
     #p is a list of lists that holds firm preferences: p[1] is a list of sets of workers (teams) in preference order for firm 1. 
@@ -119,6 +140,8 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
     #At this point, no preprocessing is done to remove non firm individually rational teams from firm preferences
     #non worker individually rational team assignments (teams containin a worker who prefers unemployment to the assigned firm)
     # are screened out below.
+    numod = LPmodel(4,8)
+    #print(f"Object test: entries = {numod.my_method()}")
     if Verbose:
         print("#############################")
         print("### Generating LP Model #####")
@@ -128,6 +151,7 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
         return([],[],[],[])
     firm_no = list() #firm for each column
     set_assgn = list() #set for each column
+    worker_ind = np.zeros((nw+1,1))
     set_ind = np.zeros((nw+1,1))
     #*******************************************
     #construct the incidence matrix column-wise
@@ -146,21 +170,29 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
             if (sum(b) > 0): continue #at least one worker in this set will not work for firm ix this team is not individually rational for the workers drop it
 
             a = [0]+ a  #row entries start at row 1 not row 0
-            set_ind = np.column_stack((set_ind,a))
+            worker_ind = np.column_stack((worker_ind,a))
             firm_no.append(ix)
             set_assgn.append(p[ix][jx])
-    set_ind = np.delete(set_ind,0,1)
-    set_ind = np.delete(set_ind,0,0)
-    nr, nc = set_ind.shape
-    #print(f">>>>>>>>  After team incidence matrix rows = {nr} columns = {nc}  <<<<<<")
-    rhs = np.ones((nr,1))
-    rowlabels = list(range(1,nw+1))
-    #columns are now set, construct objective 
+    worker_ind = np.delete(worker_ind,0,1)
+    worker_ind = np.delete(worker_ind,0,0)
+    nr, nc = worker_ind.shape
     obj = np.zeros(nc)
+    #print(f">>>>>>>>  After team incidence matrix rows = {nr} columns = {nc}  <<<<<<")
+    if DoWorkers:
+        rhs = np.ones((nr,1))
+        rowlabels = list(range(1,nw+1))
+        set_ind = worker_ind
+    else: 
+        nrtemp , nctemp = worker_ind.shape
+        set_ind = np.empty([0,nctemp])
+        rowlabels = list([])
+        rhs = np.empty([0,1])
+
+
     #*******************************************
     #now add the side constraints of one subset per firm
     #*******************************************
-    if DoOneSet == True:
+    if DoOneSet:
         for ix in range(0,nf):
             c = [1 if firm_no[kx] == ix+1 else 0 for kx in range(0,nc)]
             set_ind = np.row_stack((set_ind,c))
@@ -170,24 +202,12 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
 #    (nrow,ncol) = set_ind.shape
 #    rhs = np.ones((nrow + nf + len(firm_no),1))
 #    rhs[nc:len(rhs),0] = -1
+
+
+
     
     #*******************************************
-    #now add the variable bounds (not needed may tighten LP relaxation??)
-    #*******************************************
-    if DoBounds ==  True:
-        for ix in range(0,nc):
-            newrowu = np.zeros((1,nc))
-            newrowu[0,ix] = 1
-            set_ind = np.row_stack((set_ind,newrowu))
-            rhs = np.append(rhs,1)
-            rowlabels.append('Variable UB')
-            newrowl = np.zeros((1,nc))
-            newrowl[0,ix] = -1
-            set_ind = np.row_stack((set_ind, newrowl))
-            rhs = np.append(rhs,0)
-            rowlabels.append('Variable LB')
-    #*******************************************
-    #  now add stability constraints
+    #  now create stability constraints
     #*******************************************
     colset = [tuple(item) for item in set_assgn]
     colname = list(zip(firm_no,colset))
@@ -224,6 +244,8 @@ def doLP(nw, nf, pw = [], p=[], DoOneSet = True, DoBounds = False, StabilityCons
         rowlabels_stab = rowlabels_stab + [f'St. f: {ifirm}  wkr:{iset}' ]
         if Dual:
             obj = obj + newrow*(1)
+
+    #now put the constraint matrix together
     stab_columns = stab_columns[1:,:] #adjust out the initial column of all zeros
     if  not Dual: #if we're not dualizing out the stability constraint just put in -1's
         obj = obj - 1
@@ -263,25 +285,26 @@ def isStable(pw, pf, firms, teams , icol):
     nf = len(pf)-1
     # #check stability* by hand, one firm and a subset of workers who can improve their
     # #match
-    firm_match = [set() for ix in range(nf+1)]#the set matched to each firm (0 for none)]
-    worker_match = np.zeros((1,nw+1))
+    firm_match = [set() for ix in range(nf+1)]#the set matched to each firm (0 for none), index in list is firm number (1 to nf)
+    #worker_match = np.zeros((1,nw+1)) #index in list if worker number 
+    worker_match = [0]*(nw+1) #creates a list of 0 of length nw+1
     for ixt in range(0,len(icol)):
         if icol[ixt] == 0: continue
         ixf = firms[ixt]
         xw = teams[ixt]
-        if (firm_match[ixf] != set()):
+        if (firm_match[ixf] != set()): # if there is a non zero index in firm_match then that firm has already been assigned a team
             return(1,'Firm matched to two sets.')
         else:
             firm_match[ixf] =  xw # firms[ixt] has been matched to team xw
             for ixw in xw:
-                if worker_match[0,ixw] != 0:
+                if worker_match[ixw] != 0:
                     return(4,'') #multiply assigned worker
                 else:
-                    worker_match[0,ixw]=ixf
+                    worker_match[ixw]=ixf
 
     outstr = "Implied Matching: \n"
     firmlst = [f"Firm: {item} Subset: {firm_match[item]}" for item in range(1,nf+1)]
-    worklst = [f"Worker: {item} Firm: {worker_match[0,item]}" for item in range(1,nw+1)]
+    worklst = [f"Worker: {item} Firm: {worker_match[item]}" for item in range(1,nw+1)]
     outstr += "| ".join(firmlst) + "\n"
     outstr += "| ".join(worklst) + "\n"
     #outstr += "\n" + f"Independent Set: {icol[0]}"
@@ -292,7 +315,7 @@ def isStable(pw, pf, firms, teams , icol):
     for ixf in range(1,nf+1):
         #for firm ixf find the set of workers that prefers ixf to their current match
         for ixw in range(1,nw+1):
-            if (workerPref(ixw,pw,ixf,worker_match[0,ixw])):
+            if (workerPref(ixw,pw,ixf,worker_match[ixw])):
                 subset_preferring[ixf].add(ixw)
         outstr += "\n" + f"Workers preferring firm {ixf}: {subset_preferring[ixf]}"
     #outstr = outstr + "\n" +f"Workers preferring each firm {subset_preferring}" + "\n"
@@ -311,7 +334,7 @@ def isStable(pw, pf, firms, teams , icol):
     return(0,outstr)
 
 
-def displayLP(constraints = [], rhs = [], obj = [], teams = [], firms = [],rowlabels = []):
+def displayLP(constraints = [], rhs = [], obj = [], teams = [], firms = [],rowlabels = [], results = None):
     colset = [str(item) for item in teams]
     colname = list(zip(firms,colset))
     #colname = [(item[0],set(item[1])) for item in colname]
@@ -320,19 +343,38 @@ def displayLP(constraints = [], rhs = [], obj = [], teams = [], firms = [],rowla
     constraints['RowLabels'] = rowlabels
     constraints.index = [item+1 for item in constraints.index]
     constraints.loc[constraints.index.max() + 1] = list(obj) + [' ','OBJ']
+    if not(results is None): 
+        constraints['Slack'] = np.append(results.ineqlin.residual,0)
+        constraints['Dual'] = np.append(results.ineqlin.marginals,0)
+        x = results.x
+#        constraints.loc[len(constraints)+1] = list(x) + ['X',' ',' ',' ']
+        constraints.loc[len(constraints)+1] = list(x) + ['X','Primal',0,0]
     #constraints.to_csv("LPmodel_2.csv")
     return(constraints)
 
-def decodeSolution(firms = [], teams = [],  solution = []):
+def decodeSolution(firms = [], teams = [],  RowLabels = [], lp_Result = []):
     if (len(firms)== 0): 
             msgtxt = " Input: three vectors of length equal to number of columns in LP.\n"
-            + " firms= afirm for each column, teams = a set of workers for each column, \n"
-            +   " solution = solution vector of length = # columns"
-            print (msgtxt)
+            msgtxt += " firms= afirm for each column, teams = a set of workers for each column, \n"
+            msgtxt +=   " solution = solution vector of length = # columns"
+            return(msgtxt)
     outstring = ''
+    if (lp_Result == []): 
+        msgtxt = 'No solution to decode.'
+        return(msgtxt)
+    if (lp_Result.status != 0): 
+        outstring += "Optimization misunderstanding status = {lp_Result.status}"
+        return(outstring)
+    solution = lp_Result.x
+    dual_solution = lp_Result.ineqlin.marginals
+    if len(RowLabels) == 0 :
+        Rowlabels = [zx for zx in range(len(dual_solution))]
     for zx in range(0,len(solution)):
         if solution[zx] > 0.0:
             outstring = outstring + f"Firm: {firms[zx]}, Assigned Set: {teams[zx]} weight:{solution[zx]} \n"
+    for zx in range(0,len(dual_solution)):
+        if dual_solution[zx] != 0.0:
+            outstring = outstring + f"Row {RowLabels[zx]}, Dual: {dual_solution[zx]}\n"
     return(outstring)
 
 def doIntersectionGraph(constraint_mat):
@@ -344,7 +386,7 @@ def doIntersectionGraph(constraint_mat):
         for ic in range(nc):
             if (sum(constraint_mat[:,ic]*constraint_mat[:,ir]) > 0) & (ir != ic):
                 intersection_mat[ic,ir] = 1
-    return(intersection_mat)
+    return(intersection_mat) #this is the intersection matrix of the columns (dimension nc x nc)
     
 def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False, Verbose = False):
     #very inefficient brute force enumeration
@@ -353,7 +395,7 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
     #it is n by n with n= number of columns (and in the same order) as the constraint matrix
     nr,nc = inmat.shape
 
-    # first create a list that contains the power set of the set of columns (this is the brute force part)
+    # first create a list that contains the power set of the set of columns numbers (this is the brute force part)
     colset = list(range(nc))
     colsubsets = [[]]
     for colitem in colset:
@@ -369,19 +411,23 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
         #item is the current subset of columns we are working on
         #indx is the position in colsubsets where that item resides
         #print(f">>>>>>>>Testing column set: {item}")
-        if len(item) == 0: 
+        if len(item) == 0: #empty set of columns is independent
             is_independent[0,indx] = 1
             continue
-        if len(item) == 1: 
+        if len(item) == 1: #any set of columns consisting of one column is independent
             is_independent[0,indx] = 1
             continue
         test_list = list(itertools.combinations(tuple(item),2)) #all sets of size 2 from the set of columns given by item
+        #check each pair of columns in the current member of colsubsets for common 1's using the intersection matrix
         for xtpl in test_list:
             if inmat[xtpl[1],xtpl[0]] == 1: #xptl[1] and xptl[2] have an arc between them (inmat is symmetric as arcs are undirected only need to check one of (i,j) and (j,i))
                 is_independent[0,indx] = 0
                 break;
-    # the list of independent sets is complete. Now reconstruct the worker subsets and firms that go with them
-    indcol = np.zeros((nc,1))
+    # the list of independent sets is complete. is_independent[ix] = 1 iff the ix'th subset of colsubsets is independent and 0 otherwise
+    # 
+    # Now reconstruct the worker subsets and firms that go with them and test each one for stability
+    indcol = np.zeros((nc,1))#record the independent set as a column of column # indicators; #columns = # indep. sets.
+    stability_index = [0] # record the stability index for each independent column
     solution_count = 0
     stringout = ''
     newstring = ''
@@ -400,19 +446,26 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
             for itemx in cols:
                 newstring += f"Firm: {firms[itemx]} Subset: {teams[itemx]}" + "\n"
                 newindcol[itemx,0] = 1
-            indcol = np.column_stack((indcol,newindcol))    
+            if sum(newindcol[:,0])==0: newstring += '\n'
+            indcol = np.column_stack((indcol,newindcol))    #add the column to the array of columns
+            #check for stability using the stability constraint
+            stind = 0
             if (len(StabConst) != 0 ):
                 stabtest = np.matmul(StabConst,newindcol)
+                #stind = max(max(stabtest))
+                stind = sum(stabtest >= 0)
+                stability_index.append(stind)
                 if Verbose:
                     newstring += f" stability calculation :{np.array_str(stabtest[:,0])} \n"
                 temp = max(stabtest[:,0])
                 if (temp < 0): 
-                    cstatus = "Stable*" 
-                else: cstatus = "Not Stable*"
+                    cstatus = f"Stable* stability index = {stind}" 
+                else: cstatus = f"Not Stable* stability index = {stind}"
+            #check stability from scratch by checking all possible blocking coalitions
             sstatus,stabstr = isStable(pw,pf,firms,teams,newindcol)
             if sstatus > 0:
                 if (not StabOnly): #we are printing details on the non-stable matchings
-                    newstring += f"{stabstr}\n --------- Not Stable*  ------sstatus = {sstatus}--cstatus = {cstatus}\n"
+                    newstring += f"{stabstr}\n --------- Not Stable*  ------\n sstatus = {sstatus}--cstatus = {cstatus}\n"
                     if Verbose:
                         newstring +=  stabstr #verbose mode:  report all matchings
                         #stringout += f"{np.array_str(stabtest)}"
@@ -420,18 +473,102 @@ def doIndependentSets(inmat,teams,firms, pw, pf, StabConst = [],StabOnly = False
                     newstring = ' '
             else:
                 if Verbose:
-                    newstring += f"{stabstr} \n++++++++++ *****Stable***  +++sstatus  = {sstatus}--cstatus = {cstatus} \n "
+                    newstring += f"{stabstr} \n###### *****Stable***  ####### \n sstatus  = {sstatus}--cstatus = {cstatus} \n "
                 else:
-                    newstring += f" ++++++++++ *****Stable***  +++sstatus = {sstatus}--cstatus = {cstatus} \n "
+                    newstring += f" ###### *****Stable***  ######\n sstatus = {sstatus}--cstatus = {cstatus}  \n "
             stringout += newstring
             #else:
             #    stringout = stringout + newstring
             solution_count += 1
-    indcol = indcol[:,1:]
+    indcol = indcol[:,1:] #remove the first column of 0's
+    stability_index = stability_index[1:]
     if stringout == '': stringout = 'Nada'
-    return(indcol,stringout)
-            
-    
+    return(indcol,stability_index,stringout) #indcol is the matrix whose columns are the independent sets, stringout is the printable results
+
+              
+def extremeAdjacency(idCols, indep_mat):  #indep_mat is the intersection graph (adjacency matrix) of the columns                                  
+    arclist = []
+    nonarclist = []
+    nr,nc = idCols.shape #idcols is the matrix of independent sets,
+    #print("::::::::::::::  intersection graph ::::::::::::::::::::")
+    grph = nx.from_numpy_array(indep_mat,create_using=nx.Graph)
+    A = nx.adjacency_matrix(grph)
+    #print(A.toarray())
+    for ix in range(nc):
+        for iy in range(nc):
+            if iy >= ix: break
+            #print(" ")
+            #print("================================++++++++++++++++++++++++++++++++++++++++")
+            #print(f"Extreme PT 1(red): (#{ix}), cols:{np.where(np.array(idCols[:,ix]))[0]}, Extreme PT 2(green): (#{iy}), cols: {np.where(np.array(idCols[:,iy]))[0]} ")
+            #ix is and independent set and iy is another independent set
+            active1 = idCols[:,ix]
+            active2 = idCols[:,iy]
+            if (sum(active1) + sum(active2) == 0): continue
+            #if (sum(active1)  == 0): continue
+            #if (sum(active2)  == 0): continue
+         #now calculate the symmetric difference. Note active1 and active2 have the same length equal to the number of columns
+            active = [ 1 if (((active1[ix] == 1) & (active2[ix] == 0)) | ((active1[ix] == 0) & (active2[ix] == 1))) else 0 for ix in list(range(0,len(active1)))]
+            #now find the subgraph of the intersection graph
+            nri,nci = indep_mat.shape  #should be nxn so nri == nci = True
+            if (nri != nci) : 
+                print(f"intersection graph incidence matrix not square! shape: {indep_mat.shape}")
+                continue
+            #remove arcs not between nodes of the symmetric diff
+            imatnew = indep_mat.copy()
+            for ixi in range(0,nri):
+                for jxi in range(0,nci):
+                    if ((active[ixi] == 0) | (active[jxi] == 0)):
+                        imatnew[ixi,jxi] =0
+            #print(f"symmetric diff adjacency matrix sum = {sum(sum(imatnew))}")
+            #print(imatnew)
+            #retain rows and columns corresponding to nodes in the symmetric difference only
+            #create the subgraph of nodes in the symmetric difference
+            sym_dif_nodes = [ix for ix in list(range(0,len(active))) if active[ix]==1]
+            #now create adjacency matrix of just the subgraph of nodes in the symmetric difference
+            imatcols = [ixl for ixl in sym_dif_nodes]
+            imatrows = imatcols
+            imatnew = imatnew[:,imatcols]
+            imatnew = imatnew[imatrows,:]
+            #print("symmetric diff adjacency sub-matrix")
+            #print(imatnew)
+            cres = isConnected_Imat(imatnew)
+            if cres > 0:  
+                arclist.append((ix,iy))
+                #print(f"Connected: arc: {(ix,iy)}")
+            else:
+                nonarclist.append((ix,iy))
+            #if cres == 0:
+            #    #print("NOT Connected")
+            if cres == -1:
+                print(f"Dimension failure.  imat.shape = {imatnew.shape}") 
+            elif cres == -2:
+                print(f"imat has no nonzero entries.  {imatnew}")   
+            elif cres == -3:
+                print(f"No edges recovered from imat. \n {imatnew}") 
+            elif cres == -4: 
+                print(f"Edge list empty")     
+    return arclist, nonarclist
+
+def isConnected_Imat(imat):
+    x,y = imat.shape
+
+    #print(f"@@@@@  Entering isConnected_Imat dimensions: ({x},{y}) ")
+    #print(imat)
+
+    #if (x == 0) | (y == 0): return -1
+    #if (x != y): return(-1)
+    #if (sum(sum(imat)) == 0): return -2
+
+    grph = nx.from_numpy_array(imat,create_using=nx.Graph)
+    #print("checking: adjacency matrix of symmetric diff graph")
+    #print(nx.adjacency_matrix(grph))
+    if nx.is_connected(grph):
+        return 1
+    else:
+        return 0
+
+
+
 if __name__ == "__main__":    
     
 ###################################################################    
@@ -443,10 +580,10 @@ if __name__ == "__main__":
      
     
 #### Test Examples H4, H8, EO19, B1
-    Example = 'B1'
+    Example = 'H4'
     Vbose = True
-    TestTu = False
-    if Example == 'H1':
+    TestTu = True
+    if Example == 'H4':
 ##############Huang Example 1
         #no stable solution
         nw = 3  #of workers
@@ -588,10 +725,14 @@ if __name__ == "__main__":
     print("########################")
     print(f" Example: {Example}")
     print("########################")
+
+    #print(f"Is it global? {numod1.entries}")
+    #print(f"mymethod = {numod1.my_method()} ")
+    #print(f"numod1.entries")
     
     ####Create the constraint matrix
-    const_mat,rhs,obj,firms,teams,rowlab,stab_constr = doLP(nw, nf, pw, pf, DoOneSet = True, DoBounds = False, StabilityConstraints = True, Dual = False, Verbose = Vbose)
-    
+    #const_mat,rhs,obj,firms,teams,rowlab,stab_constr = doLP(nw, nf, pw, pf, DoOneSet = False, StabilityConstraints = True, Dual = False, Verbose = Vbose)
+    const_mat,rhs,obj,firms,teams,rowlab,stab_constr = doLP(nw, nf, pw, pf, DoWorkers = True, DoOneSet = True, StabilityConstraints = False, Dual = False, Verbose = Vbose)
     dfLP = displayLP(constraints = const_mat, rhs = rhs, obj = obj, teams = teams, firms = firms, rowlabels = rowlab)
     if Vbose:
         with pd.option_context('display.max_rows', 50,
@@ -605,19 +746,30 @@ if __name__ == "__main__":
     
     
     if TestTu:
-        IS_TU = checkTU(const_mat, Verbose = Vbose)
+        IS_TU = checkTU(const_mat, Verbose = False)
         if (IS_TU):
             print(" Is TU")
         else:
             print(" is NOT TU")
         
         
-    solution,stat = solveIt(CONSTRAINTS = const_mat, RHS = rhs, OBJ = obj, Verbose = Vbose)  
-    if stat == 0:    
-        decodeSolution(firms, teams, solution)
-    else: 
+    solution = solveIt(CONSTRAINTS = const_mat, RHS = rhs, OBJ = obj, Verbose = Vbose) 
+
+    #dfLP = displayLP(constraints = const_mat, rhs = rhs, obj = obj, teams = teams, firms = firms, rowlabels = rowlab, results = solution )
+
+    decodeSolution(firms, teams, solution)
+    if solution.status != 0:
         print("Uh oh!")
-        
+    else:
+        dfLP = displayLP(constraints = const_mat, rhs = rhs, obj = obj, teams = teams, firms = firms, rowlabels = rowlab, results = solution )
+        if Vbose:
+            with pd.option_context('display.max_rows', 50,
+                               'display.max_columns', None,
+                               'display.width', 1000,
+                               'display.precision', 0,
+                               'display.colheader_justify', 'right'):                 
+                print(dfLP)
+
     imat = doIntersectionGraph(const_mat)
     
     with pd.option_context('display.max_rows', 50,
@@ -629,18 +781,35 @@ if __name__ == "__main__":
         print(const_mat)
         print("intersection graph incidence matrix")
         print(imat)
-        independent_columns,txt_out = doIndependentSets(imat, teams, firms,pw, pf,  StabConst = stab_constr,StabOnly = False)
-        print(txt_out)
-        print("Extremal (integral) feasible solutions")
-        print(independent_columns)
-        print("Are any of the integer solutions stable?")
-        c = np.matmul(stab_constr,independent_columns)
-        nr,nc = independent_columns.shape
-        for ixc in range(0,nc):
-            col = independent_columns[:,ixc]
-            stab_status = isStable(pw,pf,firms,teams,col)
-            print(f"{ixc}: stability status = {stab_status}")
+    independent_columns,stab_index,txt_out = doIndependentSets(imat, teams, firms,pw, pf,  StabConst = stab_constr,StabOnly = False)
+    print(txt_out)
+    print("Extremal (integral) feasible solutions")
+    print(independent_columns)
+    print("stability test:")
+    print(stab_index)
+    print("Are any of the integer solutions stable?")
+    c = np.matmul(stab_constr,independent_columns)
+    nr,nc = independent_columns.shape
+    for ixc in range(0,nc):
+        col = independent_columns[:,ixc]
+        res,stab_status = isStable(pw,pf,firms,teams,col)
+        print(f"{ixc}: stability status = {res}")
+    print("Stability constraint value:")
+    print(c)
+    print("Adjacency arc data for extreme point solutions:")
+    extreme_arcs,nonextreme_arcs = extremeAdjacency(independent_columns, imat)
+    #arcst = [(a[0],a[1]) for a in extreme_arcs]
+    #nonarcst = [(a[0],a[1]) for a in nonextreme_arcs]
+    G = nx.Graph()
+    G.add_edges_from(extreme_arcs)
+    nx.draw_networkx(G)
+    plt.show()
 
-        print(c)
+    nonG = nx.Graph()
+    nonG.add_edges_from(nonextreme_arcs)
+    nx.draw_networkx(nonG)
+    plt.show()
+
+
 
     
