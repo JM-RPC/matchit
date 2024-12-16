@@ -58,13 +58,13 @@ def readData(inlist = []):
             print(f'*****>>>>>>>>>{instring}')
             continue
         elif (instring[:1] not in "123456789"):
-            return(0,0,[],[],f"Typo? {instring}")
+            return(0,0,[],[],f"Typo? {instring} => {instring[:1]}")
 
         #it's a data line
         if (wftype == 'F'):
             #check syntax...sort of
             if sum([0 if item in "][}{:0123456789," else 1 for item in instring])>0:
-                return(0,0,[],[],f"Typo? {instring}")
+                return(0,0,[],[],f"Typo? {instring} => {instring[:1]}")
             #now process it
             temp = instring.split(':')
             if len(temp)<=1: return(0,0,[],[],f"Missing ':' in {instring}?")
@@ -91,7 +91,7 @@ def readData(inlist = []):
             if workerno > nw: 
                 return(0,0,[],[],f"worker number {workerno} out of range at:{instring}")
             firmlist = [itx.strip() for itx in temp[1].split(',')]
-            firmlist = [int(itx) for itx in firmlist]
+            firmlist = [int(itx) for itx in firmlist if itx != '']
             if (len(set(firmlist))!= len(firmlist)):
                 return(0,0,[],[],f"Worker {workerno} preferences are intransitive")
             pw[workerno] = firmlist
