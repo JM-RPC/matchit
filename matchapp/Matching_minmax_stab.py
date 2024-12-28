@@ -338,18 +338,18 @@ def isStable(pw, pf, firms, teams , icol):
     #for each firm add take the union of the set of workers that prefer that firm to their matched firm
     #check to see if this set contains a set that the firm likes better than it's matched set
     bfirm = 0
-    bset = set()
+    bset = set(list(range(1,nf+2)))
     for ixf in range(1,nf+1):
         if (subset_preferring[ixf] == set()): continue
         matched_set = firm_match[ixf]
         test_set = matched_set.union(subset_preferring[ixf]) #test set is union of the set assigned to ixf and proposed blocking worker set
         for ixs in pf[ixf]: #check each set in ixf's preference list
             if (ixs.issubset(test_set)) & (firmPref(ixf,pf,ixs,matched_set)): #found a blocking firm and set of workers
-                bset = ixs-matched_set
-                if (len(bset) == 0) | (len(ixs) < len(bset)): 
+                bset0 = ixs-matched_set
+                if (len(bset0) < len(bset)): 
                     bset = ixs - matched_set
                     bfirm = ixf
-                outstr += f"Blocked by Firm:{ixf} Subset:{ixs}\n"
+                outstr += f"Blocked by Firm:{ixf} Subset:{ixs} net coalition: {bset0}\n"
                 #return(3,f"Blocked by Firm:{ixf} Subset:{ixs}")
                 isBlocked = True
     #outstr += "Stable"
@@ -476,9 +476,6 @@ def doIndependentSets(inmat,teams,firms, pw, pf, OneSet = False, StabConst = [],
     for indx,item in enumerate(is_independent[0,:]):
         sstatus = 0
         if (item == 1): #this entry corresponds to an independent set
-            #if (indx < 81) & (indx >76) :
-            #    print(f"indx ={indx}")
-            #    newstring += "Testing..."
             newstring = '\n\n*************************************\n'
             newstring += f"set #: {indx}, solution count: {solution_count}" + "\n"
             newstring += f"Independent set of columns: {colsubsets[indx]}" + "\n"
