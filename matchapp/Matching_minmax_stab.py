@@ -347,7 +347,7 @@ def isStable(pw, pf, firms, teams , icol):
             if (ixs.issubset(test_set)) & (firmPref(ixf,pf,ixs,matched_set)): #found a blocking firm and set of workers
                 bset0 = ixs-matched_set
                 if (len(bset0) < len(bset)): 
-                    bset = ixs - matched_set
+                    bset = bset0
                     bfirm = ixf
                 outstr += f"Blocked by Firm:{ixf} Subset:{ixs} net coalition: {bset0}\n"
                 #return(3,f"Blocked by Firm:{ixf} Subset:{ixs}")
@@ -356,6 +356,7 @@ def isStable(pw, pf, firms, teams , icol):
     if isBlocked:
         outstr += f"Smallest block,  Firm:{bfirm} Subset:{bset}\n"
         return(3,outstr)
+    outstr += "Stable"
     return(0,outstr)
 
 
